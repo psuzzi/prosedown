@@ -119,6 +119,28 @@ function decodeDir(encoded: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Open a URL / file in the OS default handler.
+//
+// Uses execFile (argument array, no shell) rather than exec with an
+// interpolated string so a hostile `target` — e.g. a crafted markdown link
+// href — can't break out of quoting and inject shell commands.
+// ---------------------------------------------------------------------------
+
+function openExternal(target: string) {
+  import("node:child_process").then(({ execFile }) => {
+    if (process.platform === "darwin") {
+      execFile("open", [target]);
+    } else if (process.platform === "win32") {
+      // `start` is a cmd builtin; the empty "" is the window-title arg so a
+      // quoted target isn't consumed as the title.
+      execFile("cmd", ["/c", "start", "", target]);
+    } else {
+      execFile("xdg-open", [target]);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // HTML shell
 // ---------------------------------------------------------------------------
 
@@ -364,15 +386,7 @@ wss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
       }
       case "openLink": {
         const href = msg.href as string;
-        if (href) {
-          import("node:child_process").then(({ exec }) => {
-            const cmd =
-              process.platform === "darwin" ? `open "${href}"` :
-              process.platform === "win32" ? `start "${href}"` :
-              `xdg-open "${href}"`;
-            exec(cmd);
-          });
-        }
+        if (href) openExternal(href);
         break;
       }
       case "promptImageUrl": {
@@ -380,10 +394,13 @@ wss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
         break;
       }
       case "requestGitDiff": {
-        import("node:child_process").then(({ execSync }) => {
+        import("node:child_process").then(({ execFileSync }) => {
           try {
-            const headContent = execSync(
-              `git show HEAD:"${path.relative(process.cwd(), filePath)}"`,
+            // Pass the ref as a single arg (no shell) so a filePath with
+            // shell metacharacters can't inject commands.
+            const headContent = execFileSync(
+              "git",
+              ["show", `HEAD:${path.relative(process.cwd(), filePath)}`],
               { encoding: "utf-8", cwd: state.dirPath }
             );
             ws.send(JSON.stringify({
@@ -401,8 +418,8 @@ wss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
       }
       case "toggleEditor": {
         // Open in VS Code
-        import("node:child_process").then(({ exec }) => {
-          exec(`code "${filePath}"`);
+        import("node:child_process").then(({ execFile }) => {
+          execFile("code", [filePath]);
         });
         break;
       }
@@ -425,11 +442,7 @@ server.listen(PORT, () => {
     const url = `http://localhost:${PORT}/edit${abs}`;
     console.log(`  Opening: ${path.basename(abs)}`);
     console.log();
-    const cmd =
-      process.platform === "darwin" ? `open "${url}"` :
-      process.platform === "win32" ? `start "${url}"` :
-      `xdg-open "${url}"`;
-    import("node:child_process").then(({ exec }) => exec(cmd));
+    openExternal(url);
   } else {
     console.log(`  Open /edit?file=<path> to edit a file.\n`);
   }
