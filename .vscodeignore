@@ -1,5 +1,7 @@
 .vscode/**
 .claude/**
+.ai/**
+.github/**
 .env
 .env.*
 CLAUDE.md
@@ -27,4 +29,4 @@ logo6.png
 bait.gif
 Screenshot *.png
 assets/**
-!assets/logo7.png
+!assets/icon.png

@@ -1,10 +1,10 @@
 import React from "react";
-import { DEFAULT_SETTINGS, type BetterMarkdownSettings } from "../settings";
+import { DEFAULT_SETTINGS, type ProsedownSettings } from "../settings";
 
 interface SettingsPanelProps {
   visible: boolean;
-  settings: BetterMarkdownSettings;
-  onChange: (next: BetterMarkdownSettings) => void;
+  settings: ProsedownSettings;
+  onChange: (next: ProsedownSettings) => void;
   onClose: () => void;
 }
 
@@ -16,9 +16,9 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   if (!visible) return null;
 
-  const set = <K extends keyof BetterMarkdownSettings>(
+  const set = <K extends keyof ProsedownSettings>(
     key: K,
-    value: BetterMarkdownSettings[K],
+    value: ProsedownSettings[K],
   ) => onChange({ ...settings, [key]: value });
 
   return (
@@ -41,7 +41,7 @@ export function SettingsPanel({
 
             <Toggle
               label="Save normalization on open (Recommended)"
-              description="Rich editor requires a stable round-trip, so opening a file always re-emits its markdown according to the normalization settings below. This setting turns on the auto-save feature for the first time Markdown Studio looks at a markdown file."
+              description="Rich editor requires a stable round-trip, so opening a file always re-emits its markdown according to the normalization settings below. This setting turns on the auto-save feature for the first time Prosedown looks at a markdown file."
               checked={settings.autoSave}
               onChange={(v) => set("autoSave", v)}
             />

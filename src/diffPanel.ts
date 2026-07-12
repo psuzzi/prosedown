@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { SETTING_KEYS } from "../webview/settings";
 
-const CONFIG_NAMESPACE = "markdownStudio";
+const CONFIG_NAMESPACE = "prosedown";
 
 function readSettings(): Record<string, unknown> {
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
@@ -30,8 +30,8 @@ async function writeSettings(next: Record<string, unknown>): Promise<void> {
  * read). Re-uses the same webview bundle as the custom editor but mounts
  * the DiffApp entry instead of the full Tiptap editor.
  */
-export class BetterMarkdownDiffPanel {
-  private static active: BetterMarkdownDiffPanel | null = null;
+export class ProsedownDiffPanel {
+  private static active: ProsedownDiffPanel | null = null;
   private readonly panel: vscode.WebviewPanel;
   private readonly context: vscode.ExtensionContext;
   private disposables: vscode.Disposable[] = [];
@@ -60,7 +60,7 @@ export class BetterMarkdownDiffPanel {
     }
 
     const panel = vscode.window.createWebviewPanel(
-      "betterMarkdown.diff",
+      "prosedown.diff",
       `Diff: ${title}`,
       vscode.ViewColumn.Active,
       {
@@ -71,7 +71,7 @@ export class BetterMarkdownDiffPanel {
         ],
       },
     );
-    this.active = new BetterMarkdownDiffPanel(
+    this.active = new ProsedownDiffPanel(
       context,
       panel,
       leftUri,
@@ -122,7 +122,7 @@ export class BetterMarkdownDiffPanel {
 
     this.disposables.push(
       this.panel.onDidDispose(() => {
-        BetterMarkdownDiffPanel.active = null;
+        ProsedownDiffPanel.active = null;
         this.dispose();
       }),
     );
@@ -150,7 +150,7 @@ export class BetterMarkdownDiffPanel {
         newContent,
       });
     } catch (err: any) {
-      console.error("[better-markdown] diff refresh failed:", err);
+      console.error("[prosedown] diff refresh failed:", err);
     }
   }
 
@@ -199,7 +199,7 @@ export class BetterMarkdownDiffPanel {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <link href="${styleUri}" rel="stylesheet">
-  <title>Markdown Studio — Diff</title>
+  <title>Prosedown — Diff</title>
 </head>
 <body>
   <div id="root"></div>

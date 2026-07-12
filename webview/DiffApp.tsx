@@ -3,7 +3,7 @@ import { DiffView } from "./components/DiffView";
 import {
   DEFAULT_SETTINGS,
   mergeSettings,
-  type BetterMarkdownSettings,
+  type ProsedownSettings,
 } from "./settings";
 import { vscodeApi } from "./vscode-api";
 
@@ -12,7 +12,7 @@ interface DiffInit {
   newContent: string;
   fileName: string;
   title?: string;
-  settings?: Partial<BetterMarkdownSettings>;
+  settings?: Partial<ProsedownSettings>;
 }
 
 /**
@@ -21,7 +21,7 @@ interface DiffInit {
  */
 export function DiffApp() {
   const [data, setData] = useState<DiffInit | null>(null);
-  const [settings, setSettings] = useState<BetterMarkdownSettings>(
+  const [settings, setSettings] = useState<ProsedownSettings>(
     DEFAULT_SETTINGS,
   );
 
@@ -58,9 +58,9 @@ export function DiffApp() {
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  const updateSetting = <K extends keyof BetterMarkdownSettings>(
+  const updateSetting = <K extends keyof ProsedownSettings>(
     key: K,
-    value: BetterMarkdownSettings[K],
+    value: ProsedownSettings[K],
   ) => {
     const next = { ...settings, [key]: value };
     setSettings(next);

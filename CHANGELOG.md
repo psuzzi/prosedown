@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0 — 2026-07-12
+
+- **Rebrand & fork.** This project is now **Prosedown**, an independent fork of [Markdown Studio](https://github.com/chaudhary1337/markdown-studio) (MIT, © Tanishq Chaudhary). After contributing fixes upstream with no further activity there, development continues here at full speed on a derived solution. Same MIT license; the original authorship is acknowledged in `README.md` and `LICENSE`.
+- New identity: package `prosedown`, publisher `psuzzi`, Marketplace ID `psuzzi.prosedown`, new icon. All identifiers unified under the single `prosedown` prefix — config namespace (`prosedown.*`), command IDs (`prosedown.*`), and custom-editor view type (`prosedown.editor`). Settings now surface in the VS Code Settings UI under "Prosedown".
+- Note: because the extension ID changed, this installs alongside (not over) the upstream extension; uninstall the old one if you had it.
+
+_History below is from the upstream Markdown Studio project, retained for reference._
+
 ## 2.3.x — 2026-05-02
 
 - Bug fix: Ctrl+A no longer steals focus into a math node. Tiptap's React node-view marks an atom as `selected` whenever the current selection range covers it (`from <= pos && to >= pos + nodeSize`), and `AllSelection` from select-all does exactly that — so every math node flipped to `selected=true`, which a `useEffect` was using to auto-enter editing mode and focus the input/textarea. The first math node would win the focus race and Ctrl+A would land inside it instead of selecting the document. Auto-edit now only fires for an exact `NodeSelection` targeting the node (i.e. arrow-key nav into the atom); clicks still go through the explicit `onClick` on the rendered KaTeX. Applied to both `MathInline` and `MathBlock`.

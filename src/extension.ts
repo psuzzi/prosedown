@@ -1,17 +1,17 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import { spawn, ChildProcess } from "child_process";
-import { BetterMarkdownProvider } from "./provider";
-import { BetterMarkdownDiffPanel } from "./diffPanel";
+import { ProsedownProvider } from "./provider";
+import { ProsedownDiffPanel } from "./diffPanel";
 import { SETTING_KEYS } from "../webview/settings";
 
-const CUSTOM_EDITOR_VIEW_TYPE = "betterMarkdown.editor";
-const LEGACY_SETTINGS_KEY = "betterMarkdown.settings";
-const MIGRATION_DONE_KEY = "betterMarkdown.configMigrated";
+const CUSTOM_EDITOR_VIEW_TYPE = "prosedown.editor";
+const LEGACY_SETTINGS_KEY = "prosedown.settings";
+const MIGRATION_DONE_KEY = "prosedown.configMigrated";
 
 /**
  * One-shot migration: pre-2.3.5 builds stored settings in globalState
- * under `betterMarkdown.settings`. We now own a `contributes.configuration`
+ * under `prosedown.settings`. We now own a `contributes.configuration`
  * block, so settings live in `vscode.workspace.getConfiguration()`. Copy
  * any stored values into User scope (only when the user hasn't already
  * set a value via Settings UI), then clear the legacy key. Idempotent —
@@ -26,7 +26,7 @@ async function migrateLegacySettings(
     LEGACY_SETTINGS_KEY,
   );
   if (legacy && typeof legacy === "object") {
-    const config = vscode.workspace.getConfiguration("markdownStudio");
+    const config = vscode.workspace.getConfiguration("prosedown");
     for (const key of SETTING_KEYS) {
       if (!Object.prototype.hasOwnProperty.call(legacy, key)) continue;
       const inspect = config.inspect(key);
@@ -50,7 +50,7 @@ async function migrateLegacySettings(
 export function activate(context: vscode.ExtensionContext) {
   void migrateLegacySettings(context);
 
-  const provider = new BetterMarkdownProvider(context);
+  const provider = new ProsedownProvider(context);
 
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
@@ -65,7 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Toggle command
   context.subscriptions.push(
-    vscode.commands.registerCommand("betterMarkdown.toggleEditor", async () => {
+    vscode.commands.registerCommand("prosedown.toggleEditor", async () => {
       const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
       if (!activeTab) return;
 
@@ -89,7 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Find command — sends message to active webview
   context.subscriptions.push(
-    vscode.commands.registerCommand("betterMarkdown.find", () => {
+    vscode.commands.registerCommand("prosedown.find", () => {
       provider.openSearch();
     })
   );
@@ -98,7 +98,7 @@ export function activate(context: vscode.ExtensionContext) {
   // settings revert to defaults and the welcome modal fires again on
   // the next file open. Confirms before applying.
   context.subscriptions.push(
-    vscode.commands.registerCommand("betterMarkdown.factoryReset", () => {
+    vscode.commands.registerCommand("prosedown.factoryReset", () => {
       void provider.factoryReset();
     })
   );
@@ -107,16 +107,16 @@ export function activate(context: vscode.ExtensionContext) {
   // Invoked from command palette, SCM context menu, or diff-editor toolbar.
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      "betterMarkdown.openDiff",
+      "prosedown.openDiff",
       async (arg?: unknown, second?: unknown) => {
         const { leftUri, rightUri, title } = await resolveDiffArgs(arg, second);
         if (!leftUri || !rightUri) {
           vscode.window.showInformationMessage(
-            "Markdown Studio: no markdown file to diff."
+            "Prosedown: no markdown file to diff."
           );
           return;
         }
-        await BetterMarkdownDiffPanel.createOrShow(
+        await ProsedownDiffPanel.createOrShow(
           context,
           leftUri,
           rightUri,
@@ -132,7 +132,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      "betterMarkdown.openInBrowser",
+      "prosedown.openInBrowser",
       async (uri?: vscode.Uri) => {
         // The active editor when the rich (custom) editor is focused is
         // a CustomEditor, so `vscode.window.activeTextEditor` is undefined.
@@ -152,7 +152,7 @@ export function activate(context: vscode.ExtensionContext) {
           vscode.window.activeTextEditor?.document.uri;
         if (!fileUri || fileUri.scheme !== "file") {
           vscode.window.showWarningMessage(
-            "Markdown Studio: no markdown file to open in browser."
+            "Prosedown: no markdown file to open in browser."
           );
           return;
         }
@@ -198,7 +198,7 @@ export function activate(context: vscode.ExtensionContext) {
   // editor but can't be edited, so we auto-close them.
   //
   // NOTE: we investigated replacing these with the rich diff panel
-  // (BetterMarkdownDiffPanel) for Claude Code integration, but Claude Code
+  // (ProsedownDiffPanel) for Claude Code integration, but Claude Code
   // writes to disk only AFTER the user accepts in the CLI — before that the
   // proposed content is internal to Claude Code with no extension API to
   // read it.  onDidChangeTextDocument fires post-acceptance (too late for
@@ -237,11 +237,11 @@ class RichEditorCodeLensProvider implements vscode.CodeLensProvider {
     return [
       new vscode.CodeLens(range, {
         title: "Open in Rich Editor",
-        command: "betterMarkdown.toggleEditor",
+        command: "prosedown.toggleEditor",
       }),
       new vscode.CodeLens(range, {
         title: "Open in Browser",
-        command: "betterMarkdown.openInBrowser",
+        command: "prosedown.openInBrowser",
       }),
     ];
   }

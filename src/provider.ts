@@ -2,9 +2,9 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { SETTING_KEYS } from "../webview/settings";
 
-const CONFIG_NAMESPACE = "markdownStudio";
-const CURSORS_KEY = "betterMarkdown.cursors";
-const CONSENT_SHOWN_KEY = "betterMarkdown.consentShown";
+const CONFIG_NAMESPACE = "prosedown";
+const CURSORS_KEY = "prosedown.cursors";
+const CONSENT_SHOWN_KEY = "prosedown.consentShown";
 
 /**
  * Read every known setting from VS Code config into a plain object the
@@ -39,7 +39,7 @@ async function writeSettings(next: Record<string, unknown>): Promise<void> {
   }
 }
 
-export class BetterMarkdownProvider implements vscode.CustomTextEditorProvider {
+export class ProsedownProvider implements vscode.CustomTextEditorProvider {
   constructor(readonly context: vscode.ExtensionContext) {
     this.context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
@@ -76,7 +76,7 @@ export class BetterMarkdownProvider implements vscode.CustomTextEditorProvider {
 
   /**
    * Setup prompt fired the first time the rich editor opens any file
-   * post-install, and re-runnable via the `Markdown Studio: Open Setup
+   * post-install, and re-runnable via the `Prosedown: Open Setup
    * Prompt` command. The actual UI is rendered inside the webview (see
    * `SetupPrompt.tsx`); this method just routes the trigger to the right
    * webview. The webview posts `setupPromptChoice` back, which is
@@ -92,7 +92,7 @@ export class BetterMarkdownProvider implements vscode.CustomTextEditorProvider {
     // prompt has nowhere to render. Tell the user to open a file and
     // re-run, since the on-open path will fire automatically next time.
     vscode.window.showInformationMessage(
-      "Open a markdown file in the rich editor to access Markdown Studio setup.",
+      "Open a markdown file in the rich editor to access Prosedown setup.",
     );
   }
 
@@ -107,7 +107,7 @@ export class BetterMarkdownProvider implements vscode.CustomTextEditorProvider {
   }
 
   /**
-   * Wipe all Markdown Studio user settings + the first-run consent flag,
+   * Wipe all Prosedown user settings + the first-run consent flag,
    * so settings revert to defaults and the welcome modal fires again on
    * the next file open. Confirms before nuking so a stray click in the
    * command palette doesn't cost the user their configuration. Clears
@@ -117,7 +117,7 @@ export class BetterMarkdownProvider implements vscode.CustomTextEditorProvider {
   async factoryReset(): Promise<void> {
     const RESET = "Reset";
     const choice = await vscode.window.showWarningMessage(
-      "Factory reset Markdown Studio? All settings revert to defaults.",
+      "Factory reset Prosedown? All settings revert to defaults.",
       { modal: true },
       RESET,
     );
@@ -133,7 +133,7 @@ export class BetterMarkdownProvider implements vscode.CustomTextEditorProvider {
     // post-reset values to every open webview.
 
     vscode.window.showInformationMessage(
-      "Markdown Studio: factory reset complete. Open any markdown file to see the welcome prompt.",
+      "Prosedown: factory reset complete. Open any markdown file to see the welcome prompt.",
     );
   }
 
@@ -270,7 +270,7 @@ export class BetterMarkdownProvider implements vscode.CustomTextEditorProvider {
         }
       } else if (msg.type === "openInBrowser") {
         vscode.commands.executeCommand(
-          "betterMarkdown.openInBrowser",
+          "prosedown.openInBrowser",
           document.uri,
         );
       } else if (msg.type === "promptImageUrl") {
@@ -384,7 +384,7 @@ export class BetterMarkdownProvider implements vscode.CustomTextEditorProvider {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${webview.cspSource} 'wasm-unsafe-eval'; font-src ${webview.cspSource} data:; img-src ${webview.cspSource} data: blob: https:;">
   <link href="${styleUri}" rel="stylesheet">
-  <title>Markdown Studio</title>
+  <title>Prosedown</title>
 </head>
 <body>
   <div id="root"></div>

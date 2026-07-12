@@ -34,7 +34,7 @@ export function SetupPrompt({
         aria-labelledby="setup-prompt-title"
       >
         <div className="setup-prompt-header">
-          <h2 id="setup-prompt-title">Welcome to Markdown Studio</h2>
+          <h2 id="setup-prompt-title">Welcome to Prosedown</h2>
           <button
             className="setup-prompt-close"
             onClick={onDismiss}
@@ -45,7 +45,7 @@ export function SetupPrompt({
         </div>
         <div className="setup-prompt-body">
           <p>
-            Markdown Studio reformats files on open. Compacts lists, unifies
+            Prosedown reformats files on open. Compacts lists, unifies
             bullet markers, and similar tidy-ups. Then, it gets out of your way.
           </p>
           <p>Pick how you'd like to handle the reformatting.</p>

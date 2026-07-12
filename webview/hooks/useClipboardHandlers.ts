@@ -3,13 +3,13 @@ import type { MutableRefObject } from "react";
 import type { Editor } from "@tiptap/react";
 import { DOMSerializer } from "@tiptap/pm/model";
 import { htmlToMarkdownSync } from "./useVSCodeSync";
-import type { BetterMarkdownSettings } from "../settings";
+import type { ProsedownSettings } from "../settings";
 
 export function useClipboardHandlers(
   editor: Editor | null,
   baseUri: MutableRefObject<string>,
   docFolderPath: MutableRefObject<string>,
-  settingsRef: MutableRefObject<BetterMarkdownSettings>,
+  settingsRef: MutableRefObject<ProsedownSettings>,
   uploadImage: (file: File) => Promise<string>,
 ): void {
   // Copy/cut: serialize the selection to markdown so text editors (and
@@ -39,7 +39,7 @@ export function useClipboardHandlers(
           settingsRef.current,
         );
       } catch (err) {
-        console.error("[better-markdown] copy → markdown failed:", err);
+        console.error("[prosedown] copy → markdown failed:", err);
         return; // let Tiptap's default behavior run
       }
 
@@ -81,7 +81,7 @@ export function useClipboardHandlers(
           const src = await uploadImage(file);
           editor.chain().focus().setImage({ src }).run();
         } catch (err) {
-          console.error("[better-markdown] image paste failed:", err);
+          console.error("[prosedown] image paste failed:", err);
         }
       });
     };

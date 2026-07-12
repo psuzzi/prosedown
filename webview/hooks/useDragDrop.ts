@@ -49,7 +49,7 @@ export function useDragDrop(
             .insertContentAt(pos, { type: "image", attrs: { src } })
             .run();
         } catch (err) {
-          console.error("[better-markdown] image drop failed:", err);
+          console.error("[prosedown] image drop failed:", err);
         }
       });
     };

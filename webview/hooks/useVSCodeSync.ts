@@ -9,7 +9,7 @@ import rehypeParse from "rehype-parse";
 import rehypeRemark from "rehype-remark";
 
 import { buildMarkdownConfig, normalizeMarkdown } from "../markdown.config";
-import { DEFAULT_SETTINGS, type BetterMarkdownSettings } from "../settings";
+import { DEFAULT_SETTINGS, type ProsedownSettings } from "../settings";
 import {
   mathHandlers,
   PIPE_PH,
@@ -242,7 +242,7 @@ function preprocessTiptapHtml(html: string): string {
 
 function postprocessMarkdown(
   md: string,
-  settings: BetterMarkdownSettings,
+  settings: ProsedownSettings,
   baseUri?: string,
   docFolderPath?: string
 ): string {
@@ -267,7 +267,7 @@ export async function htmlToMarkdown(
   html: string,
   baseUri?: string,
   docFolderPath?: string,
-  settings: BetterMarkdownSettings = DEFAULT_SETTINGS
+  settings: ProsedownSettings = DEFAULT_SETTINGS
 ): Promise<string> {
   html = preprocessTiptapHtml(html);
   const result = await unified()
@@ -288,7 +288,7 @@ export function htmlToMarkdownSync(
   html: string,
   baseUri?: string,
   docFolderPath?: string,
-  settings: BetterMarkdownSettings = DEFAULT_SETTINGS
+  settings: ProsedownSettings = DEFAULT_SETTINGS
 ): string {
   html = preprocessTiptapHtml(html);
   const result = unified()

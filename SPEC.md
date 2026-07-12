@@ -1,4 +1,4 @@
-# Markdown Studio — Spec
+# Prosedown — Spec
 
 ## Overview
 
@@ -80,8 +80,8 @@ A VSCode extension that replaces the default markdown editor with a Notion-like 
 ### Git Diff View
 
 - **Inline toggle**: "Diff" button (top-right of editor) compares live buffer against HEAD. Uses `vscode.git` extension to fetch HEAD content.
-- **Standalone panel**: `betterMarkdown.openDiff` command opens a dedicated rich diff webview between any two URIs. Accessible from:
-  - Command palette (Markdown Studio: Open Rich Diff)
+- **Standalone panel**: `prosedown.openDiff` command opens a dedicated rich diff webview between any two URIs. Accessible from:
+  - Command palette (Prosedown: Open Rich Diff)
   - SCM resource context menu (right-click changed .md file)
   - Diff editor toolbar (when a .md diff is active)
 - **Two view modes**, switchable in the toolbar:
@@ -132,7 +132,7 @@ better-markdown/
 ├── package.json              # Extension manifest + deps
 ├── tsconfig.json             # Extension host TS config
 ├── esbuild.js                # Dual build (extension + webview)
-├── assets/                   # Logos, README screenshots/gifs (only logo7.png ships in the vsix)
+├── assets/                   # Logos, README screenshots/gifs (only icon.png ships in the vsix)
 ├── scripts/
 │   └── deploy.sh             # Build + package + optional publish
 ├── test/
@@ -231,7 +231,7 @@ Approaches investigated (Apr 2026):
 | Detect external changes via `onDidChangeTextDocument` in the provider | Works, but fires only post-acceptance — too late for pre-accept review                                                           |
 | `FileSystemWatcher` on `.md` files                                    | Same timing: fires after Claude Code writes, i.e. post-acceptance                                                                |
 
-**What would unblock this:** Claude Code exposing a VS Code extension API (event or virtual-document provider) that surfaces the proposed file content before the user accepts. The rich diff panel (`BetterMarkdownDiffPanel`) already accepts arbitrary URI pairs, so wiring it up would be straightforward once the content is available.
+**What would unblock this:** Claude Code exposing a VS Code extension API (event or virtual-document provider) that surfaces the proposed file content before the user accepts. The rich diff panel (`ProsedownDiffPanel`) already accepts arbitrary URI pairs, so wiring it up would be straightforward once the content is available.
 
 ## Known Limitations
 

@@ -5,14 +5,14 @@
  * See remark-stringify options:
  * https://github.com/remarkjs/remark/tree/main/packages/remark-stringify#options
  */
-import { DEFAULT_SETTINGS, type BetterMarkdownSettings } from "./settings";
+import { DEFAULT_SETTINGS, type ProsedownSettings } from "./settings";
 
 /**
  * Build a remark-stringify options object from user settings.
  * `strong` and `emphasis` are single-char in remark's API (the stringifier
  * doubles strong automatically), so we map our user-friendly `**`/`__` down.
  */
-export function buildMarkdownConfig(settings: BetterMarkdownSettings = DEFAULT_SETTINGS) {
+export function buildMarkdownConfig(settings: ProsedownSettings = DEFAULT_SETTINGS) {
   return {
     bullet: settings.bullet,
     bulletOther: (settings.bullet === "-" ? "*" : "-") as "-" | "*" | "+",
@@ -38,7 +38,7 @@ export const MARKDOWN_CONFIG = buildMarkdownConfig(DEFAULT_SETTINGS);
  */
 export function normalizeMarkdown(
   md: string,
-  settings: BetterMarkdownSettings = DEFAULT_SETTINGS
+  settings: ProsedownSettings = DEFAULT_SETTINGS
 ): string {
   if (settings.shellscriptToBash) {
     md = md.replace(/^```shellscript$/gm, "```bash");

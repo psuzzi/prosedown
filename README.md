@@ -1,12 +1,12 @@
-# Markdown Studio
+# Prosedown
 
 I read as much `.md` as all other programming languages combined.
 
 Personal notes, research notes, Claude Code generated reports, random READMEs.
 
-I find it easier to read Notion-like markdown rather than raw markdown.
+I find it easier to read rich, block-based markdown rather than raw markdown.
 
-That's why Markdown Studio exists.
+That's why Prosedown exists.
 
 ## The Cool Stuff
 
@@ -118,7 +118,7 @@ Hit the Install button on the marketplace page. No login, setup or permissions r
 
 ### Commands
 
-Every action is in the command palette under the `Markdown Studio:` prefix.
+Every action is in the command palette under the `Prosedown:` prefix.
 
 | Command palette title     | Shortcut                                      | What it does                                                                                                                                                      |
 | ------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -126,7 +126,7 @@ Every action is in the command palette under the `Markdown Studio:` prefix.
 | Find in Document          | Cmd/Ctrl+F (inside the rich editor)           | Open the in-editor search bar for the current rich-editor pane.                                                                                                   |
 | Open Rich Diff            | Right-click an SCM entry, or the diff toolbar | Open a side-by-side or rendered markdown diff of the selected file vs HEAD (or any two URIs).                                                                     |
 | Open in Browser           | —                                             | Spin up a local server and open the file in your default browser as the same rich editor — drag-and-drop images, leave it open as a tab, edits sync back to disk. |
-| Factory Reset Settings    | —                                             | Wipe all Markdown Studio settings back to defaults and re-show the welcome modal on the next file open. Confirms before applying.                                 |
+| Factory Reset Settings    | —                                             | Wipe all Prosedown settings back to defaults and re-show the welcome modal on the next file open. Confirms before applying.                                 |
 
 ### Keyboard shortcuts
 
@@ -146,12 +146,16 @@ Everything runs locally in your VS Code instance.
 
 ### Bugs/Feature Requests
 
-If you encounter any bugs or have any feature requests, please [open an issue](https://github.com/chaudhary1337/markdown-studio/issues).
+If you encounter any bugs or have any feature requests, please [open an issue](https://github.com/psuzzi/prosedown/issues).
 
 I am actively using it myself, so expect frequent updates.
 
 ### Available Platforms
 
-VS Code: https://marketplace.visualstudio.com/items?itemName=tanishq-chaudhary.its-markdown-studio
+VS Code: https://marketplace.visualstudio.com/items?itemName=psuzzi.prosedown
 
-Open VSX: https://open-vsx.org/extension/tanishq-chaudhary/its-markdown-studio
+Open VSX: https://open-vsx.org/extension/psuzzi/prosedown
+
+### Acknowledgments
+
+Prosedown is a fork of the excellent [Markdown Studio](https://github.com/chaudhary1337/markdown-studio) by Tanishq Chaudhary, used under the MIT License. After contributing a few fixes upstream and seeing no further activity there, I decided to fork and continue development at full speed on a derived solution. My thanks to the original author for the foundation this builds on.

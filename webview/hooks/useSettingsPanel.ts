@@ -1,18 +1,18 @@
 import { useRef, useState, useCallback } from "react";
 import type { MutableRefObject } from "react";
-import { DEFAULT_SETTINGS, type BetterMarkdownSettings } from "../settings";
+import { DEFAULT_SETTINGS, type ProsedownSettings } from "../settings";
 import { vscodeApi } from "../vscode-api";
 
 export function useSettingsPanel(
   handleUpdateRef: MutableRefObject<() => void>,
 ) {
-  const settingsRef = useRef<BetterMarkdownSettings>(DEFAULT_SETTINGS);
+  const settingsRef = useRef<ProsedownSettings>(DEFAULT_SETTINGS);
   const [settings, setSettings] =
-    useState<BetterMarkdownSettings>(DEFAULT_SETTINGS);
+    useState<ProsedownSettings>(DEFAULT_SETTINGS);
   const [settingsVisible, setSettingsVisible] = useState(false);
 
   const updateSettings = useCallback(
-    (next: BetterMarkdownSettings) => {
+    (next: ProsedownSettings) => {
       settingsRef.current = next;
       setSettings(next);
       vscodeApi.postMessage({ type: "saveSettings", settings: next });
@@ -23,7 +23,7 @@ export function useSettingsPanel(
 
   /** Apply settings from an external source (e.g. init message) without
    *  triggering a re-serialization of the document. */
-  const applySettings = useCallback((s: BetterMarkdownSettings) => {
+  const applySettings = useCallback((s: ProsedownSettings) => {
     settingsRef.current = s;
     setSettings(s);
   }, []);

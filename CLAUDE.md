@@ -1,4 +1,6 @@
-# Markdown Studio — Claude workflow notes
+# Prosedown — Claude workflow notes
+
+> Prosedown is a fork of [Markdown Studio](https://github.com/chaudhary1337/markdown-studio) (MIT, © Tanishq Chaudhary), rebranded as of v1.0.0. Publisher `psuzzi`, package `prosedown`, Marketplace ID `psuzzi.prosedown`. All brand identifiers (config namespace, command IDs, view type) share the single `prosedown` prefix.
 
 ## Before finishing ANY change
 
@@ -11,7 +13,7 @@ Run all four steps, in this order, every time. No exceptions.
    - Esbuild must succeed for both `src/extension.ts` (node) and `webview/index.tsx` (browser). Type errors in either halt the build.
 1. **Package**: `npm run package`
    - Produces a `.vsix` file via `vsce package` for local install / distribution.
-1. **Force install**: install the latest version of markdown studio. For example:`code --install-extension its-markdown-studio-2.3.6.vsix --force`. Refer Versioning section for more information on when the version changes.
+1. **Force install**: install the latest version of Prosedown. For example:`code --install-extension prosedown-1.0.0.vsix --force`. Refer Versioning section for more information on when the version changes.
    - Installs/updates the extension in VS Code. Reload the window afterwards.
 
 If you skip any step, the user won't see the change. Always do all four.
@@ -77,7 +79,7 @@ Keep the handlers and placeholder logic in sync between `useVSCodeSync.ts` (prod
 
 ## Settings storage
 
-Settings live in VS Code's native config (`vscode.workspace.getConfiguration("markdownStudio")`), declared in `package.json`'s `contributes.configuration`. The `markdownStudio.*` namespace was chosen instead of `betterMarkdown.*` because VS Code's Settings UI auto-derives section labels by title-casing the dotted segments — so `betterMarkdown.bullet` would render as "Better Markdown: Bullet" regardless of `configuration.title`. Internal command IDs (`betterMarkdown.toggleEditor` etc.) and the `betterMarkdown.editor` view type are unchanged so existing user keybindings and editor associations still resolve.
+Settings live in VS Code's native config (`vscode.workspace.getConfiguration("prosedown")`), declared in `package.json`'s `contributes.configuration`. The whole brand shares one `prosedown` token: config namespace (`prosedown.*`), command IDs (`prosedown.toggleEditor` etc.), and the custom-editor view type (`prosedown.editor`). The single token matters because VS Code's Settings UI auto-derives section labels by title-casing the dotted segment — `prosedown.bullet` renders as "Prosedown: Bullet", matching the `displayName`.
 
 Three write paths feed the same store:
 
@@ -85,7 +87,7 @@ Three write paths feed the same store:
 - the in-app `SettingsPanel` (writes User scope via `config.update(...)`)
 - programmatic edits
 
-`onDidChangeConfiguration` listeners in `src/provider.ts` and `src/diffPanel.ts` push fresh settings to every open webview as `settingsUpdated`. The schema in `package.json` MUST stay in sync with `BetterMarkdownSettings`, `DEFAULT_SETTINGS`, and `SETTING_KEYS` in `webview/settings.ts` — adding a new setting means updating all four places.
+`onDidChangeConfiguration` listeners in `src/provider.ts` and `src/diffPanel.ts` push fresh settings to every open webview as `settingsUpdated`. The schema in `package.json` MUST stay in sync with `ProsedownSettings`, `DEFAULT_SETTINGS`, and `SETTING_KEYS` in `webview/settings.ts` — adding a new setting means updating all four places.
 
 A one-time migration in `src/extension.ts` (`migrateLegacySettings`) copies pre-2.3.5 globalState settings into User-scope config on first activation.
 

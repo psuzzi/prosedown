@@ -1,8 +1,8 @@
 /**
- * Markdown Studio user settings.
+ * Prosedown user settings.
  *
  * Storage: VS Code's native configuration system, namespace
- * `betterMarkdown.*`. The schema is declared in package.json's
+ * `prosedown.*`. The schema is declared in package.json's
  * `contributes.configuration` and the defaults below MUST stay in sync.
  * Users can edit via the Settings UI, `.vscode/settings.json`, or the
  * in-app SettingsPanel — all three write to the same store.
@@ -13,7 +13,7 @@
  *      independently toggleable).
  */
 
-export interface BetterMarkdownSettings {
+export interface ProsedownSettings {
   // --- remark-stringify markers (Editor → markdown serialization) ---
   /** Bullet character for unordered lists. */
   bullet: "-" | "*" | "+";
@@ -74,7 +74,7 @@ export interface BetterMarkdownSettings {
   bubbleMenuShortcut: string;
 }
 
-export const DEFAULT_SETTINGS: BetterMarkdownSettings = {
+export const DEFAULT_SETTINGS: ProsedownSettings = {
   bullet: "-",
   emphasis: "_",
   strong: "**",
@@ -99,7 +99,7 @@ export const DEFAULT_SETTINGS: BetterMarkdownSettings = {
  * Authoritative list of every settings key. Host-side code iterates this
  * to read/write VS Code config without duplicating the list.
  */
-export const SETTING_KEYS: (keyof BetterMarkdownSettings)[] = [
+export const SETTING_KEYS: (keyof ProsedownSettings)[] = [
   "bullet",
   "emphasis",
   "strong",
@@ -123,8 +123,8 @@ export const SETTING_KEYS: (keyof BetterMarkdownSettings)[] = [
  * keys always have a sensible value.
  */
 export function mergeSettings(
-  partial: Partial<BetterMarkdownSettings> | null | undefined
-): BetterMarkdownSettings {
+  partial: Partial<ProsedownSettings> | null | undefined
+): ProsedownSettings {
   if (!partial) return { ...DEFAULT_SETTINGS };
   return { ...DEFAULT_SETTINGS, ...partial };
 }

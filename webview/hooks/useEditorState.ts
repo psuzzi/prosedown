@@ -7,7 +7,7 @@ import {
   htmlToMarkdownSync,
 } from "./useVSCodeSync";
 import { extractFrontmatter, prependFrontmatter } from "../frontmatter";
-import { mergeSettings, type BetterMarkdownSettings } from "../settings";
+import { mergeSettings, type ProsedownSettings } from "../settings";
 import { vscodeApi, isBrowserMode } from "../vscode-api";
 
 function mimeToExt(mime: string): string {
@@ -35,9 +35,9 @@ function fileToBase64(file: File): Promise<string> {
 
 interface UseEditorStateOptions {
   editor: Editor | null;
-  settingsRef: MutableRefObject<BetterMarkdownSettings>;
+  settingsRef: MutableRefObject<ProsedownSettings>;
   handleUpdateRef: MutableRefObject<() => void>;
-  applySettings: (s: BetterMarkdownSettings) => void;
+  applySettings: (s: ProsedownSettings) => void;
 }
 
 export function useEditorState({
@@ -281,7 +281,7 @@ export function useEditorState({
         setStatus(null);
       } catch (err: any) {
         setStatus(`Save error: ${err?.message || String(err)}`);
-        console.error("[better-markdown] htmlToMarkdown failed:", err);
+        console.error("[prosedown] htmlToMarkdown failed:", err);
       }
     }, 300);
   }, [editor, settingsRef]);

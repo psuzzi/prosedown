@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * Standalone dev server for Markdown Studio.
+ * Standalone dev server for Prosedown.
  *
  * Usage:  npx tsx server/index.ts [file.md]
  *    or:  npm run serve -- [file.md]
@@ -25,7 +25,7 @@ const PORT = parseInt(process.env.PORT || "3333", 10);
 const DIST = path.resolve(__dirname, "..", "dist");
 const SETTINGS_FILE = path.join(
   process.env.HOME || process.env.USERPROFILE || ".",
-  ".better-markdown-settings.json"
+  ".prosedown-settings.json"
 );
 
 // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ function buildHtml(filePath: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="/editor.css" rel="stylesheet">
-  <title>${name} — Markdown Studio</title>
+  <title>${name} — Prosedown</title>
 </head>
 <body>
   <div id="root"></div>
@@ -168,7 +168,7 @@ function buildErrorHtml(title: string, filePath: string, detail?: string): strin
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Markdown Studio</title>
+  <title>Prosedown</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #1e1e1e; color: #d4d4d4; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
     .box { max-width: 520px; text-align: center; }
@@ -182,7 +182,7 @@ function buildErrorHtml(title: string, filePath: string, detail?: string): strin
   <div class="box">
     <h1>${title}</h1>
     <div class="path">${filePath}</div>
-    <p>${detail || 'Markdown Studio only supports <code>.md</code> (Markdown) files.'}</p>
+    <p>${detail || 'Prosedown only supports <code>.md</code> (Markdown) files.'}</p>
   </div>
 </body>
 </html>`;
@@ -234,7 +234,7 @@ const server = http.createServer((req, res) => {
       res.end(buildErrorHtml(
         "This is a directory, not a file",
         file,
-        "Markdown Studio only supports <code>.md</code> files. Open a specific markdown file instead."
+        "Prosedown only supports <code>.md</code> files. Open a specific markdown file instead."
       ));
       return;
     }
@@ -243,7 +243,7 @@ const server = http.createServer((req, res) => {
       res.end(buildErrorHtml(
         "Unsupported file type",
         file,
-        "Markdown Studio only supports <code>.md</code> (Markdown) files."
+        "Prosedown only supports <code>.md</code> (Markdown) files."
       ));
       return;
     }
@@ -261,7 +261,7 @@ const server = http.createServer((req, res) => {
       res.end();
     } else {
       res.writeHead(200, { "Content-Type": "text/plain" });
-      res.end("Markdown Studio server running. Open /edit/<path-to-file.md> to edit a file.");
+      res.end("Prosedown server running. Open /edit/<path-to-file.md> to edit a file.");
     }
     return;
   }
@@ -435,7 +435,7 @@ wss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
 
 server.listen(PORT, () => {
   const initialFile = process.argv[2];
-  console.log(`\n  Markdown Studio server`);
+  console.log(`\n  Prosedown server`);
   console.log(`  http://localhost:${PORT}`);
   if (initialFile) {
     const abs = path.resolve(initialFile);
