@@ -8,6 +8,8 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      OVSX_PAT: ${{ secrets.OPENVSX_PAT }}
     steps:
       - uses: actions/checkout@v5
 
@@ -40,6 +42,5 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCODE_PAT }}
 
       - name: Publish to Open VSX
-        run: npx ovsx publish extension.vsix -p $OVSX_PAT
-        env:
-          OVSX_PAT: ${{ secrets.OPENVSX_PAT }}
+        if: env.OVSX_PAT != ''
+        run: npx ovsx publish extension.vsix -p "$OVSX_PAT"
