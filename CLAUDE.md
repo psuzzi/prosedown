@@ -26,19 +26,35 @@ Update the vsix filename in the force-install step above to match.
 
 Always update `CHANGELOG.md` with every version bump. Patch-level changes within the same minor version are grouped under a single `x.y.x` heading (e.g. `## 1.0.x`).
 
+## Git remotes
+
+- `prosedown` → `git@github.com:psuzzi/prosedown.git` — **our** repo. Push branches, PRs, and tags here.
+- `fork` → `git@github.com:psuzzi/markdown-studio.git` — the pre-rebrand fork.
+- `origin` → `git@github.com:chaudhary1337/markdown-studio.git` — **upstream**. Never push here.
+
+## Branch & PR workflow
+
+Each fix goes through a pull request so activity shows on the Marketplace "Pull Requests" panel and there's a review checkpoint.
+
+1. Branch off `master`: `fix/<yyy>-<desc>` (three-digit issue number + short desc, e.g. `fix/003-hide-treeview`). Never commit fixes directly to `master`.
+2. Do the work + the four-step finish workflow + version bump on the branch. No AI attribution in commits.
+3. After the user verifies, push the branch to `prosedown` and open a PR **into `master`** with `Closes #<N>`.
+4. On the user's approval, **squash-merge** the PR (auto-closes the issue) and delete the branch.
+5. Release is a separate, explicit step (below).
+
 ## Releasing to the Marketplace
 
 Publishing is automated via `.github/workflows/publish.yml`, which fires on pushed tags matching `v*`. It packages one `.vsix` and publishes it to both the VS Code Marketplace (`vsce`, `VSCODE_PAT` secret) and Open VSX (`ovsx`, `OPENVSX_PAT` secret). The workflow fails fast if the tag version doesn't match `package.json`.
 
-After a version bump + commit is pushed to `master`, ask the user for permission before tagging. Example:
+After the fix's PR is squash-merged to `master`, ask the user for permission before tagging. Example:
 
 > "Ready to release v2.1.13 — want me to tag and push so the workflow publishes it?"
 
-On approval, run:
+On approval, run (tag on `master`, push to the `prosedown` remote — **not** `origin`):
 
 ```
 git tag v<version>
-git push origin v<version>
+git push prosedown v<version>
 ```
 
 Never tag without explicit user approval — tagging triggers a live marketplace publish.
