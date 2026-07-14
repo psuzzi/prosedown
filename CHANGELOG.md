@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.x
+
+- Change: The right-hand outline ("Contents") panel now starts **collapsed** by default instead of expanded, so opening a document no longer eats horizontal space. Click the handle on the right edge to reveal it. ([#3](https://github.com/psuzzi/prosedown/issues/3))
+
 ## 1.0.0 — 2026-07-12
 
 - **Rebrand & fork.** This project is now **Prosedown**, an independent fork of [Markdown Studio](https://github.com/chaudhary1337/markdown-studio) (MIT, © Tanishq Chaudhary). After contributing fixes upstream with no further activity there, development continues here at full speed on a derived solution. Same MIT license; the original authorship is acknowledged in `README.md` and `LICENSE`.
