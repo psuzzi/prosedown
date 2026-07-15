@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer } from "@tiptap/react";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
+import { Copy, Check } from "lucide-react";
 
 const LANGUAGES = [
   "plaintext",
@@ -17,6 +18,19 @@ function CodeBlockComponent({ node, updateAttributes, extension }: any) {
   const language = node.attrs.language || "";
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  // Copy the raw code (no fences / language / escaping) to the clipboard.
+  const copyCode = useCallback(() => {
+    const text = node.textContent as string;
+    navigator.clipboard
+      ?.writeText(text)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      })
+      .catch(() => {});
+  }, [node]);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -71,6 +85,16 @@ function CodeBlockComponent({ node, updateAttributes, extension }: any) {
 
   return (
     <NodeViewWrapper as="pre" className="code-block-wrapper">
+      <button
+        className="code-block-copy"
+        contentEditable={false}
+        onClick={copyCode}
+        type="button"
+        title={copied ? "Copied" : "Copy code"}
+        aria-label="Copy code"
+      >
+        {copied ? <Check size={13} /> : <Copy size={13} />}
+      </button>
       <div className="code-block-lang-bar" contentEditable={false}>
         <button
           ref={buttonRef}

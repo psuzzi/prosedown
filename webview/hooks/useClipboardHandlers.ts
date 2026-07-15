@@ -2,8 +2,45 @@ import { useEffect } from "react";
 import type { MutableRefObject } from "react";
 import type { Editor } from "@tiptap/react";
 import { DOMSerializer } from "@tiptap/pm/model";
+import { NodeSelection, type EditorState } from "@tiptap/pm/state";
 import { htmlToMarkdownSync } from "./useVSCodeSync";
 import type { ProsedownSettings } from "../settings";
+
+/**
+ * True when the current selection is entirely code — a single code block's
+ * text, a NodeSelection of a code block, or an inline run fully covered by the
+ * `code` mark. Such selections should copy as raw code, not markdown, so
+ * pasting into a terminal doesn't carry backticks / fences / escapes.
+ */
+function selectionIsAllCode(state: EditorState): boolean {
+  const { from, to, empty } = state.selection;
+  if (empty || from === to) return false;
+  const codeBlock = state.schema.nodes.codeBlock;
+  const codeMark = state.schema.marks.code;
+
+  // Whole code block selected as a node.
+  const sel = state.selection;
+  if (codeBlock && sel instanceof NodeSelection && sel.node.type === codeBlock) return true;
+
+  // Selection sits inside a single code block.
+  const $from = state.doc.resolve(from);
+  const $to = state.doc.resolve(to);
+  if (codeBlock && $from.parent.type === codeBlock && $from.sameParent($to)) return true;
+
+  // Every text node in the range carries the inline `code` mark.
+  if (codeMark) {
+    let sawText = false;
+    let allCode = true;
+    state.doc.nodesBetween(from, to, (node) => {
+      if (node.isText) {
+        sawText = true;
+        if (!codeMark.isInSet(node.marks)) allCode = false;
+      }
+    });
+    if (sawText && allCode) return true;
+  }
+  return false;
+}
 
 export function useClipboardHandlers(
   editor: Editor | null,
@@ -30,21 +67,27 @@ export function useClipboardHandlers(
       tmp.appendChild(fragment);
       const html = tmp.innerHTML;
 
-      let markdown: string;
-      try {
-        markdown = htmlToMarkdownSync(
-          html,
-          baseUri.current,
-          docFolderPath.current,
-          settingsRef.current,
-        );
-      } catch (err) {
-        console.error("[prosedown] copy → markdown failed:", err);
-        return; // let Tiptap's default behavior run
+      // Code-only selections copy as raw text (no backticks / fences / escapes)
+      // so pasting into a terminal is clean; prose still copies as markdown.
+      let plain: string;
+      if (selectionIsAllCode(editor.state)) {
+        plain = editor.state.doc.textBetween(from, to, "\n");
+      } else {
+        try {
+          plain = htmlToMarkdownSync(
+            html,
+            baseUri.current,
+            docFolderPath.current,
+            settingsRef.current,
+          ).replace(/\n+$/, "");
+        } catch (err) {
+          console.error("[prosedown] copy → markdown failed:", err);
+          return; // let Tiptap's default behavior run
+        }
       }
 
       e.preventDefault();
-      e.clipboardData.setData("text/plain", markdown.replace(/\n+$/, ""));
+      e.clipboardData.setData("text/plain", plain);
       e.clipboardData.setData("text/html", html);
 
       // For cut, also delete the selection (we preventDefault'd the copy,

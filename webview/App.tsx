@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { TextSelection } from "@tiptap/pm/state";
 import { StarterKit } from "@tiptap/starter-kit";
 import { Code } from "@tiptap/extension-code";
 import { Link } from "@tiptap/extension-link";
@@ -78,6 +79,28 @@ export function App() {
     ],
     editorProps: {
       attributes: { class: "tiptap-editor" },
+      // Triple-click inside a code block selects just the clicked line
+      // (like a normal code editor), not the whole block.
+      handleTripleClick(view, pos) {
+        const codeBlock = view.state.schema.nodes.codeBlock;
+        const $pos = view.state.doc.resolve(pos);
+        if (!codeBlock || $pos.parent.type !== codeBlock) return false;
+        // A code block holds a single plain-text run (newlines are literal "\n",
+        // no inline nodes), so document positions map 1:1 to string indices —
+        // that's what lets the offset math below locate line boundaries.
+        const text = $pos.parent.textContent;
+        const blockStart = $pos.start();
+        const offset = pos - blockStart;
+        const lineStart = text.lastIndexOf("\n", offset - 1) + 1;
+        const nl = text.indexOf("\n", offset);
+        const lineEnd = nl === -1 ? text.length : nl;
+        const from = blockStart + lineStart;
+        const to = blockStart + lineEnd;
+        view.dispatch(
+          view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)),
+        );
+        return true;
+      },
     },
   });
 
