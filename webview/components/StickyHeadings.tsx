@@ -25,17 +25,20 @@ export function StickyHeadings() {
       ".tiptap-editor h1, .tiptap-editor h2, .tiptap-editor h3, .tiptap-editor h4, .tiptap-editor h5, .tiptap-editor h6"
     );
     const containerRect = container.getBoundingClientRect();
-    const stickyEl = container.querySelector(".sticky-headings");
-    const stickyHeight = stickyEl ? stickyEl.getBoundingClientRect().height : 0;
-    const threshold = containerRect.top + stickyHeight + 12;
+    // Membership depends ONLY on the viewport fold, never on the bar's own
+    // height — otherwise a taller bar lowers the threshold, pulling in more
+    // headings, which makes the bar taller: the feedback loop that flickers (#21).
+    const fold = containerRect.top;
 
     const prevIn = prevIndicesRef.current;
     const aboveViewport: StickyHeading[] = [];
     headingEls.forEach((el, index) => {
-      const bottom = el.getBoundingClientRect().bottom;
-      // Headings already in the stack get a looser threshold (harder to remove)
-      const effectiveThreshold = prevIn.has(index) ? threshold + HYSTERESIS : threshold;
-      if (bottom < effectiveThreshold) {
+      const top = el.getBoundingClientRect().top;
+      // A heading joins the breadcrumb once its own top scrolls above the fold.
+      // Hysteresis: once shown it stays until its top returns HYSTERESIS px below
+      // the fold, so a heading resting near the fold can't jitter.
+      const line = prevIn.has(index) ? fold + HYSTERESIS : fold;
+      if (top < line) {
         const text = el.textContent?.trim();
         if (text) {
           aboveViewport.push({ index, text, level: parseInt(el.tagName[1], 10) });

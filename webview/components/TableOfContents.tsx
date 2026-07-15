@@ -37,6 +37,7 @@ export function TableOfContents() {
   const [collapsed, setCollapsed] = useState(true);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const lastOpenWidth = useRef(DEFAULT_WIDTH);
+  const prevEntriesKeyRef = useRef("");
   const dragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
@@ -58,7 +59,14 @@ export function TableOfContents() {
         newEntries.push({ id: String(index), text, level: parseInt(el.tagName[1], 10) });
       }
     });
-    setEntries(newEntries);
+    // Only re-render when the headings actually changed — updateToc runs on a
+    // 1s interval and on every scroll frame; a fresh array each time would
+    // repaint the outline needlessly (#21).
+    const key = newEntries.map((e) => `${e.id}:${e.level}:${e.text}`).join("|");
+    if (key !== prevEntriesKeyRef.current) {
+      prevEntriesKeyRef.current = key;
+      setEntries(newEntries);
+    }
 
     const containerRect = container.getBoundingClientRect();
     let closestId: string | null = null;
