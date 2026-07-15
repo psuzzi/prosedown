@@ -2,6 +2,7 @@
 
 ## 1.0.x
 
+- Change: Tables are now more compact and elegant, close to the VS Code markdown preview. A bolder top rule and header underline, lighter separators between rows, lightest separators between columns (inner only — no outer left/right border), no rule at the very bottom (like plain markdown), and tighter vertical rhythm. Also drops a header background that was a translucent-white overlay, invisible in light themes. ([#12](https://github.com/psuzzi/prosedown/issues/12))
 - Fix: Code now follows the VS Code theme in both light and dark. Inline code and fenced code blocks use the theme's code-block background (`--vscode-textCodeBlock-background`) instead of a translucent-white overlay that was invisible in light themes, and syntax highlighting swaps between the VS Code Dark+ and Light+ palettes by theme kind instead of always using dark colors. ([#10](https://github.com/psuzzi/prosedown/issues/10), [#13](https://github.com/psuzzi/prosedown/issues/13))
 - Change: The right-hand outline ("Contents") panel now starts **collapsed** by default instead of expanded, so opening a document no longer eats horizontal space. Click the handle on the right edge to reveal it. ([#3](https://github.com/psuzzi/prosedown/issues/3))
 
