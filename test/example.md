@@ -1,12 +1,14 @@
 ---
-title: Markdown Studio — Feature Showcase
+title: Prosedown — Feature Showcase
 author: Your Name
 tags: [markdown, demo, reference]
 ---
 
-# Markdown Studio — Feature Showcase
+![Prosedown](img/icon.png)
 
-This document exercises **every** feature Markdown Studio renders. Open it in the rich editor to see it come to life, edit anything, then run **Open Rich Diff** to review your changes.
+# Prosedown — Feature Showcase
+
+This document exercises **every** feature Prosedown renders. Oapen it in the rich editor to see it come to life, edit anything, then run **Open Rich Diff** to review your changes.
 
 > The YAML block at the very top is **frontmatter** — it's preserved on save.
 
@@ -110,7 +112,7 @@ JSON:
 
 ```json
 {
-  "name": "markdown-studio",
+  "name": "prosedown",
   "features": ["math", "mermaid", "tables"],
   "enabled": true
 }
@@ -207,11 +209,11 @@ https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
 **GitHub repository:**
 
-https://github.com/chaudhary1337/markdown-studio
+https://github.com/psuzzi/prosedown
 
 **GitHub pull request:**
 
-https://github.com/chaudhary1337/markdown-studio/pull/14
+https://github.com/psuzzi/prosedown/pull/27
 
 ## 11. Horizontal rules & special characters
 

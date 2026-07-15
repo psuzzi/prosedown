@@ -1,10 +1,32 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import { ProsedownDiffPanel } from "./diffPanel";
 import { SETTING_KEYS } from "../webview/settings";
 
 const CONFIG_NAMESPACE = "prosedown";
 const CURSORS_KEY = "prosedown.cursors";
 const CONSENT_SHOWN_KEY = "prosedown.consentShown";
+
+// #16: when a compare-editor pane resolves through the custom editor (with a
+// non-`file:` scheme), map it to the two URIs of a rich diff so we can auto-open
+// the proven ProsedownDiffPanel. Returns null when the scheme isn't a
+// recognized compare side — those fall through to normal (unchanged) rendering.
+function comparePair(
+  uri: vscode.Uri,
+): { left: vscode.Uri; right: vscode.Uri; label: string; closeNative: boolean } | null {
+  const fileUri = vscode.Uri.file(uri.path);
+  const name = path.basename(uri.path);
+  switch (uri.scheme) {
+    case "_claude_vscode_fs_right": // Claude Code proposed side (new); file: is original
+      // Don't close the native compare yet — Claude Code's accept/reject may
+      // depend on its tab. Verify via logs before enabling closeNative.
+      return { left: fileUri, right: uri, label: `${name} — proposed edit`, closeNative: false };
+    case "git": // git compare: this pane is HEAD (old); file: is working tree (new)
+      return { left: uri, right: fileUri, label: `${name} — git changes`, closeNative: true };
+    default:
+      return null; // e.g. Copilot's scheme once known; currently just logged
+  }
+}
 
 /**
  * Read every known setting from VS Code config into a plain object the
@@ -167,6 +189,32 @@ export class ProsedownProvider implements vscode.CustomTextEditorProvider {
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken,
   ): Promise<void> {
+    // #16: when a compare-editor pane resolves through us (a non-`file:`
+    // scheme), auto-open the proven rich diff panel fed by both sides, and —
+    // where safe — close the native two-pane compare so only the rich diff
+    // remains. `file:` panes are unaffected (normal editing); unrecognized
+    // schemes fall through to the normal read-only render.
+    if (document.uri.scheme !== "file") {
+      const pair = comparePair(document.uri);
+      if (pair) {
+        // The native compare tab is active right now; capture it so we can
+        // close it once our rich diff panel is up.
+        const nativeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+        void ProsedownDiffPanel.createOrShow(this.context, pair.left, pair.right, pair.label)
+          .then(() => {
+            if (pair.closeNative && nativeTab) {
+              // Let the panel establish, then close the native two-pane compare.
+              setTimeout(() => {
+                void vscode.window.tabGroups.close(nativeTab);
+              }, 120);
+            }
+          })
+          .catch(() => {
+            /* fall back to the normal read-only render of this pane */
+          });
+      }
+    }
+
     const webview = webviewPanel.webview;
 
     // Give the editor tab the Prosedown mark (flat purple P + down-caret)
@@ -371,6 +419,7 @@ export class ProsedownProvider implements vscode.CustomTextEditorProvider {
       this.openWebviews.delete(webview);
     });
   }
+
 
   private getHtmlForWebview(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(

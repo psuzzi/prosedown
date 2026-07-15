@@ -26,7 +26,10 @@ import { isGitHubUrl } from "../extensions/GitHubEmbed";
  * elements, `contains-task-list` class on <ul>, etc. Used by the rich
  * diff view where we render directly to the DOM without Tiptap.
  */
-export async function markdownToDisplayHtml(md: string): Promise<string> {
+export async function markdownToDisplayHtml(
+  md: string,
+  baseUri?: string,
+): Promise<string> {
   md = protectTableCodePipes(md);
   md = protectCurrencyDollars(md);
   const result = await unified()
@@ -42,6 +45,16 @@ export async function markdownToDisplayHtml(md: string): Promise<string> {
     /(<code[^>]*>)([\s\S]*?)(<\/code>)/g,
     (_m, open, c, close) => open + c.replace(/\n$/, "") + close
   );
+  // Resolve relative image paths to webview URIs (needed in the diff view).
+  if (baseUri) {
+    html = html.replace(
+      /<img\s([^>]*?)src="([^"]+)"/g,
+      (_m, before, src) => {
+        if (/^(https?:\/\/|data:|vscode-)/.test(src)) return `<img ${before}src="${src}"`;
+        return `<img ${before}src="${baseUri.replace(/\/$/, "")}/${src.replace(/^\.?\//, "")}"`;
+      }
+    );
+  }
   return html;
 }
 

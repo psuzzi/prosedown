@@ -2,7 +2,7 @@
   "name": "prosedown",
   "displayName": "Prosedown",
   "description": "Rich, block-based WYSIWYG markdown editing in VS Code — tables, math, Mermaid, and rich diffs.",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "publisher": "psuzzi",
   "license": "MIT",
   "repository": {
@@ -172,40 +172,76 @@
         },
         "prosedown.bullet": {
           "type": "string",
-          "enum": ["-", "*", "+"],
-          "enumDescriptions": ["dash", "star", "plus"],
+          "enum": [
+            "-",
+            "*",
+            "+"
+          ],
+          "enumDescriptions": [
+            "dash",
+            "star",
+            "plus"
+          ],
           "default": "-",
           "order": 10,
           "markdownDescription": "Bullet character for unordered lists when serializing back to markdown."
         },
         "prosedown.emphasis": {
           "type": "string",
-          "enum": ["_", "*"],
-          "enumDescriptions": ["_italic_", "*italic*"],
+          "enum": [
+            "_",
+            "*"
+          ],
+          "enumDescriptions": [
+            "_italic_",
+            "*italic*"
+          ],
           "default": "_",
           "order": 11,
           "markdownDescription": "Emphasis (italic) marker."
         },
         "prosedown.strong": {
           "type": "string",
-          "enum": ["**", "__"],
-          "enumDescriptions": ["**bold**", "__bold__"],
+          "enum": [
+            "**",
+            "__"
+          ],
+          "enumDescriptions": [
+            "**bold**",
+            "__bold__"
+          ],
           "default": "**",
           "order": 12,
           "markdownDescription": "Strong (bold) marker."
         },
         "prosedown.rule": {
           "type": "string",
-          "enum": ["-", "*", "_"],
-          "enumDescriptions": ["---", "***", "___"],
+          "enum": [
+            "-",
+            "*",
+            "_"
+          ],
+          "enumDescriptions": [
+            "---",
+            "***",
+            "___"
+          ],
           "default": "-",
           "order": 13,
           "markdownDescription": "Horizontal-rule character. Rendered as three of whichever you pick."
         },
         "prosedown.listItemIndent": {
           "type": "string",
-          "enum": ["one", "tab", "mixed"],
-          "enumDescriptions": ["1 space", "tab", "mixed"],
+          "enum": [
+            "one",
+            "tab",
+            "mixed"
+          ],
+          "enumDescriptions": [
+            "1 space",
+            "tab",
+            "mixed"
+          ],
           "default": "one",
           "order": 14,
           "markdownDescription": "Continuation indent for list items."
@@ -224,16 +260,28 @@
         },
         "prosedown.diffMode": {
           "type": "string",
-          "enum": ["source", "rendered"],
-          "enumDescriptions": ["Source (line diff)", "Rendered (HTML diff)"],
+          "enum": [
+            "source",
+            "rendered"
+          ],
+          "enumDescriptions": [
+            "Source (line diff)",
+            "Rendered (HTML diff)"
+          ],
           "default": "rendered",
           "order": 40,
           "markdownDescription": "Default view for the rich diff panel."
         },
         "prosedown.diffLayout": {
           "type": "string",
-          "enum": ["unified", "side-by-side"],
-          "enumDescriptions": ["Unified", "Side-by-side"],
+          "enum": [
+            "unified",
+            "side-by-side"
+          ],
+          "enumDescriptions": [
+            "Unified",
+            "Side-by-side"
+          ],
           "default": "side-by-side",
           "order": 41,
           "markdownDescription": "Layout for the source (line-level) diff toggle."

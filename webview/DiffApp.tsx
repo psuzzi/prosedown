@@ -12,6 +12,7 @@ interface DiffInit {
   newContent: string;
   fileName: string;
   title?: string;
+  baseUri?: string;
   settings?: Partial<ProsedownSettings>;
 }
 
@@ -37,6 +38,7 @@ export function DiffApp() {
           newContent: msg.newContent || "",
           fileName: msg.fileName || "file.md",
           title: msg.title,
+          baseUri: msg.baseUri,
         });
       } else if (msg.type === "diffUpdate") {
         // Host can push refreshed content (e.g. underlying file changed)
@@ -77,8 +79,10 @@ export function DiffApp() {
       newContent={data.newContent}
       fileName={data.fileName}
       title={data.title}
+      baseUri={data.baseUri}
       layout={settings.diffLayout}
       mode={settings.diffMode}
+      onEdit={() => vscodeApi.postMessage({ type: "editFile" })}
       onClose={() => vscodeApi.postMessage({ type: "closeDiff" })}
       onLayoutChange={(v) => updateSetting("diffLayout", v)}
       onModeChange={(v) => updateSetting("diffMode", v)}
