@@ -87,6 +87,24 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Directional editor-title buttons (the icon always shows the destination).
+  // Each is gated by a `when` clause so only one is visible at a time.
+  const activeTabUri = (): vscode.Uri | undefined => {
+    const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+    if (!input || typeof input !== "object") return undefined;
+    return (input as { uri?: vscode.Uri }).uri;
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand("prosedown.openInProsedown", async () => {
+      const uri = activeTabUri();
+      if (uri) await vscode.commands.executeCommand("vscode.openWith", uri, CUSTOM_EDITOR_VIEW_TYPE);
+    }),
+    vscode.commands.registerCommand("prosedown.openSourceEditor", async () => {
+      const uri = activeTabUri();
+      if (uri) await vscode.commands.executeCommand("vscode.openWith", uri, "default");
+    })
+  );
+
   // Find command — sends message to active webview
   context.subscriptions.push(
     vscode.commands.registerCommand("prosedown.find", () => {

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="128"
+   height="128"
+   viewBox="0 0 128 128"
+   version="1.1"
+   id="svg5"
+   sodipodi:docname="editor-source-icon.svg"
+   inkscape:version="1.4 (e7c3feb1, 2024-10-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="4.5961941"
+     inkscape:cx="65.924109"
+     inkscape:cy="56.350971"
+     inkscape:window-width="1600"
+     inkscape:window-height="867"
+     inkscape:window-x="195"
+     inkscape:window-y="84"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="g5" />
+  <defs
+     id="defs5" />
+  <!-- Prosedown "source" mark: code-style brackets (purple) framing an M + down-caret (black) -->
+  <g
+     fill="none"
+     stroke-linecap="round"
+     stroke-linejoin="round"
+     id="g5">
+    <path
+       d="m 35.851338,28.447968 h -18 v 64 h 18"
+       stroke="#7161F0"
+       stroke-width="6"
+       id="path1" />
+    <path
+       d="m 92.402379,28.447968 h 17.999991 v 64 H 92.402379"
+       stroke="#7161F0"
+       stroke-width="6"
+       id="path2" />
+    <g
+       transform="matrix(0.84017179,0,0,0.84017179,6.5394883,6.6109772)"
+       id="g3">
+      <path
+         d="m 45.705989,95.882158 v -62 l 22.5,32.117842 22.5,-32.117842 v 62"
+         stroke="#000000"
+         stroke-width="15"
+         id="path3" />
+    </g>
+    <g
+       transform="matrix(0.55,0,0,0.55,38.127278,33.003061)"
+       id="g4">
+      <path
+         d="m 71.175206,96.903339 10,10.000011 10.000007,-10.000011"
+         stroke="#000000"
+         stroke-width="15"
+         id="path4" />
+    </g>
+  </g>
+</svg>
