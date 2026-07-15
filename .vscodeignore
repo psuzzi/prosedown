@@ -30,3 +30,4 @@ bait.gif
 Screenshot *.png
 assets/**
 !assets/icon.png
+!assets/editor-icon.png

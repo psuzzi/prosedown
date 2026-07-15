@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="14 10 100 100">
+  <!-- Prosedown tab mark: code-style brackets framing a P monogram with a down-caret -->
+  <g fill="none" stroke="#7161F0" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m 35.851338,28.447968 h -18 v 64 h 18" stroke-width="6"/>
+    <path d="m 92.402379,28.447968 h 17.999991 v 64 H 92.402379" stroke-width="6"/>
+    <g transform="matrix(0.84017179,0,0,0.84017179,8.5394883,6.6109772)">
+      <path d="m 45.705989,95.882158 v -62 h 26 a 19,19 0 0 1 0,38 h -26" stroke-width="15"/>
+    </g>
+    <g transform="matrix(0.55,0,0,0.55,32.666402,32.350347)">
+      <path d="m 71.175206,96.903339 10,10.000011 10.000007,-10.000011" stroke-width="15"/>
+    </g>
+  </g>
+</svg>
