@@ -131,6 +131,33 @@ html, body, #root {
 .tiptap-editor pre code,
 .tiptap-editor .code-block-wrapper code { background: none; color: var(--vscode-editor-foreground, #d4d4d4); }
 
+/* Copy button — top-right, inside the block's padding, shown on hover */
+.code-block-copy {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background, rgba(127, 127, 127, 0.18));
+  color: var(--vscode-descriptionForeground, #888);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+.code-block-wrapper:hover .code-block-copy {
+  opacity: 0.65;
+}
+.code-block-copy:hover {
+  opacity: 1;
+  color: var(--vscode-foreground, #ccc);
+  background: var(--vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.28));
+}
+
 /* Notion-style language selector bar */
 .code-block-lang-bar {
   display: flex;
