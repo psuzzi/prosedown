@@ -2,6 +2,7 @@
 
 ## 1.0.x
 
+- Fix: Code now follows the VS Code theme in both light and dark. Inline code and fenced code blocks use the theme's code-block background (`--vscode-textCodeBlock-background`) instead of a translucent-white overlay that was invisible in light themes, and syntax highlighting swaps between the VS Code Dark+ and Light+ palettes by theme kind instead of always using dark colors. ([#10](https://github.com/psuzzi/prosedown/issues/10), [#13](https://github.com/psuzzi/prosedown/issues/13))
 - Change: The right-hand outline ("Contents") panel now starts **collapsed** by default instead of expanded, so opening a document no longer eats horizontal space. Click the handle on the right edge to reveal it. ([#3](https://github.com/psuzzi/prosedown/issues/3))
 
 ## 1.0.0 — 2026-07-12
