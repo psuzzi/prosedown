@@ -169,6 +169,10 @@ export class ProsedownProvider implements vscode.CustomTextEditorProvider {
   ): Promise<void> {
     const webview = webviewPanel.webview;
 
+    // Give the editor tab the Prosedown mark (flat purple P + down-caret)
+    // instead of the generic markdown glyph. (#19)
+    webviewPanel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, "assets", "editor-icon.png");
+
     // Non-file schemes (git:, conflictResolution:, vscode-scm:, ...) are read-
     // only. We still render them — e.g. git diff side panes get the rich
     // Tiptap view — but we suppress edit sync so we never try to write back.
