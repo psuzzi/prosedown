@@ -104,7 +104,7 @@ html, body, #root {
 
 /* Code blocks */
 .tiptap-editor pre {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.12));
   border-radius: 4px;
   padding: 0.75em 1em;
   overflow-x: auto;
@@ -114,7 +114,7 @@ html, body, #root {
 }
 
 .tiptap-editor .code-block-wrapper {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.12));
   border-radius: 4px;
   padding: 0.75em 1em;
   font-family: var(--vscode-editor-fontFamily, monospace);
@@ -129,7 +129,7 @@ html, body, #root {
 }
 
 .tiptap-editor pre code,
-.tiptap-editor .code-block-wrapper code { background: none; color: #d4d4d4; }
+.tiptap-editor .code-block-wrapper code { background: none; color: var(--vscode-editor-foreground, #d4d4d4); }
 
 /* Notion-style language selector bar */
 .code-block-lang-bar {
@@ -217,34 +217,61 @@ html, body, #root {
   opacity: 0.5;
 }
 
-/* Syntax highlighting (lowlight/highlight.js tokens) */
+/* Syntax highlighting (lowlight/highlight.js tokens).
+   Token colors are theme-swapped via CSS variables: defaults below are VS Code
+   Dark+; the light-theme block overrides them with VS Code Light+ so code follows
+   the active theme kind (same palettes the default markdown preview uses). */
+.tiptap-editor {
+  --hl-comment:  #6a9955;
+  --hl-keyword:  #569cd6;
+  --hl-string:   #ce9178;
+  --hl-number:   #b5cea8;
+  --hl-function: #dcdcaa;
+  --hl-type:     #4ec9b0;
+  --hl-variable: #9cdcfe;
+  --hl-regexp:   #d16969;
+  --hl-meta:     #c586c0;
+}
+[data-vscode-theme-kind="vscode-light"] .tiptap-editor,
+[data-vscode-theme-kind="vscode-high-contrast-light"] .tiptap-editor {
+  --hl-comment:  #008000;
+  --hl-keyword:  #0000ff;
+  --hl-string:   #a31515;
+  --hl-number:   #098658;
+  --hl-function: #795e26;
+  --hl-type:     #267f99;
+  --hl-variable: #001080;
+  --hl-regexp:   #811f3f;
+  --hl-meta:     #af00db;
+}
 .tiptap-editor .hljs-comment,
-.tiptap-editor .hljs-quote { color: #6a9955; font-style: italic; }
+.tiptap-editor .hljs-quote { color: var(--hl-comment); font-style: italic; }
 .tiptap-editor .hljs-keyword,
 .tiptap-editor .hljs-selector-tag,
-.tiptap-editor .hljs-built_in { color: #569cd6; }
-.tiptap-editor .hljs-string,
-.tiptap-editor .hljs-attr { color: #ce9178; }
+.tiptap-editor .hljs-built_in { color: var(--hl-keyword); }
+.tiptap-editor .hljs-string { color: var(--hl-string); }
 .tiptap-editor .hljs-number,
-.tiptap-editor .hljs-literal { color: #b5cea8; }
+.tiptap-editor .hljs-literal { color: var(--hl-number); }
 .tiptap-editor .hljs-function,
-.tiptap-editor .hljs-title { color: #dcdcaa; }
+.tiptap-editor .hljs-title { color: var(--hl-function); }
 .tiptap-editor .hljs-type,
-.tiptap-editor .hljs-class .hljs-title { color: #4ec9b0; }
+.tiptap-editor .hljs-class .hljs-title { color: var(--hl-type); }
 .tiptap-editor .hljs-variable,
-.tiptap-editor .hljs-params { color: #9cdcfe; }
-.tiptap-editor .hljs-regexp { color: #d16969; }
-.tiptap-editor .hljs-meta { color: #c586c0; }
-.tiptap-editor .hljs-tag { color: #569cd6; }
-.tiptap-editor .hljs-name { color: #4ec9b0; }
-.tiptap-editor .hljs-attribute { color: #9cdcfe; }
-.tiptap-editor .hljs-symbol { color: #b5cea8; }
-.tiptap-editor .hljs-deletion { color: #ce9178; }
-.tiptap-editor .hljs-addition { color: #b5cea8; }
+.tiptap-editor .hljs-params,
+.tiptap-editor .hljs-attr { color: var(--hl-variable); }
+.tiptap-editor .hljs-regexp { color: var(--hl-regexp); }
+.tiptap-editor .hljs-meta { color: var(--hl-meta); }
+.tiptap-editor .hljs-tag { color: var(--hl-keyword); }
+.tiptap-editor .hljs-name { color: var(--hl-type); }
+.tiptap-editor .hljs-attribute { color: var(--hl-variable); }
+.tiptap-editor .hljs-symbol { color: var(--hl-number); }
+.tiptap-editor .hljs-deletion { color: var(--hl-string); }
+.tiptap-editor .hljs-addition { color: var(--hl-number); }
 
 /* Inline code */
 .tiptap-editor code {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.15));
+  color: var(--vscode-textPreformat-foreground, inherit);
   border-radius: 3px;
   padding: 0.15em 0.3em;
   font-family: var(--vscode-editor-fontFamily, monospace);
