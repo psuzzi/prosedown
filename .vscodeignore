@@ -31,3 +31,5 @@ Screenshot *.png
 assets/**
 !assets/icon.png
 !assets/editor-icon.png
+!assets/editor-source-icon.png
+!assets/editor-source-icon-dark.png

@@ -2,7 +2,7 @@
   "name": "prosedown",
   "displayName": "Prosedown",
   "description": "Rich, block-based WYSIWYG markdown editing in VS Code — tables, math, Mermaid, and rich diffs.",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "publisher": "psuzzi",
   "license": "MIT",
   "repository": {
@@ -71,9 +71,26 @@
     "commands": [
       {
         "command": "prosedown.toggleEditor",
-        "title": "Toggle Rich/Source Editor",
+        "title": "Toggle Prosedown/Source Editor",
+        "category": "Prosedown"
+      },
+      {
+        "command": "prosedown.openInProsedown",
+        "title": "Open in Prosedown",
         "category": "Prosedown",
-        "icon": "$(notebook-render-output)"
+        "icon": {
+          "light": "assets/editor-icon.png",
+          "dark": "assets/editor-icon.png"
+        }
+      },
+      {
+        "command": "prosedown.openSourceEditor",
+        "title": "Open Source Editor",
+        "category": "Prosedown",
+        "icon": {
+          "light": "assets/editor-source-icon.png",
+          "dark": "assets/editor-source-icon-dark.png"
+        }
       },
       {
         "command": "prosedown.find",
@@ -121,9 +138,14 @@
       ],
       "editor/title": [
         {
-          "command": "prosedown.toggleEditor",
+          "command": "prosedown.openInProsedown",
           "group": "navigation",
-          "when": "resourceExtname == .md"
+          "when": "resourceExtname == .md && activeCustomEditorId != prosedown.editor"
+        },
+        {
+          "command": "prosedown.openSourceEditor",
+          "group": "navigation",
+          "when": "activeCustomEditorId == prosedown.editor"
         },
         {
           "command": "prosedown.openDiff",
