@@ -50,7 +50,7 @@ function MermaidBlockView({ node }: any) {
   // Source collapse is ephemeral UI state (not persisted to markdown).
   // Default: expanded when the block is empty or erroring (so users can
   // fix it), collapsed once there's a successful render.
-  const [sourceOpen, setSourceOpen] = useState<boolean>(true);
+  const [sourceOpen, setSourceOpen] = useState<boolean>(() => !source.trim());
   // Stable, unique id for mermaid.render — must start with a letter so it
   // can be used as a DOM id / SVG target.
   const idRef = useRef<string>(
@@ -99,6 +99,11 @@ function MermaidBlockView({ node }: any) {
       clearTimeout(timer);
     };
   }, [source, themeVersion]);
+
+  // Reveal the source when a render error appears so users can fix it.
+  useEffect(() => {
+    if (error) setSourceOpen(true);
+  }, [error]);
 
   return (
     <NodeViewWrapper className="mermaid-block-wrapper">
