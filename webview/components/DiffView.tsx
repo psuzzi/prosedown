@@ -146,6 +146,8 @@ interface DiffViewProps {
   onLayoutChange: (layout: DiffLayout) => void;
   onModeChange: (mode: DiffMode) => void;
   title?: string; // e.g. "Diff vs HEAD" or "abc123 → def456"
+  baseUri?: string; // webview base for resolving relative image paths
+  onEdit?: () => void; // when set, shows an "Edit" button (opens the file to edit)
 }
 
 export function DiffView({
@@ -158,6 +160,8 @@ export function DiffView({
   onLayoutChange,
   onModeChange,
   title,
+  baseUri,
+  onEdit,
 }: DiffViewProps) {
   const noChanges = oldContent === newContent;
 
@@ -192,8 +196,8 @@ export function DiffView({
       try {
         setRenderedErr(null);
         const [oldHtml, newHtml] = await Promise.all([
-          markdownToDisplayHtml(oldContent),
-          markdownToDisplayHtml(newContent),
+          markdownToDisplayHtml(oldContent, baseUri),
+          markdownToDisplayHtml(newContent, baseUri),
         ]);
         if (cancelled) return;
         const oldPre = preprocessForDiff(oldHtml);
@@ -208,7 +212,7 @@ export function DiffView({
     return () => {
       cancelled = true;
     };
-  }, [mode, oldContent, newContent, noChanges]);
+  }, [mode, oldContent, newContent, noChanges, baseUri]);
 
   // --- Navigation through rendered-diff hunks ---
   // node-htmldiff tags each logical change with data-operation-index="N".
@@ -312,6 +316,15 @@ export function DiffView({
           </span>
         </div>
         <div className="diff-toolbar-right">
+          {onEdit && (
+            <button
+              className="settings-segment"
+              onClick={onEdit}
+              title="Open the file in the Prosedown editor to edit (the diff refreshes on save)"
+            >
+              Edit
+            </button>
+          )}
           {mode === "rendered" && hunks.length > 0 && (
             <div className="diff-nav">
               <button

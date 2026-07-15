@@ -1,22 +1,20 @@
-# Prosedown
-
 I read as much `.md` as all other programming languages combined.
 
 Personal notes, research notes, Claude Code generated reports, random READMEs.
 
-I find it easier to read rich, block-based markdown rather than raw markdown.
+I find it easier to read rich, block-based markdown than raw markdown — WYSIWYG (What You See Is What You Get), so the document on screen already looks the way it will read.
 
 That's why Prosedown exists.
 
 ## The Cool Stuff
 
-### Rich git Diffs
+### Rich Diffs — for git _and_ AI edits
 
-You have seen rich editing. WYSIWYG for faster reading.
+You have seen rich editing. But have you seen rich **diffing**?
 
-But have you seen rich diffing?
+Prosedown renders a navigable, side-by-side diff of your markdown — with images inline and headings intact. It works for `git` changes **and** for AI-proposed edits: when Claude Code (or another agent) previews a change to a `.md` file, Prosedown opens the rich diff automatically. Step through every change with the ↑ / ↓ controls.
 
-![diff](assets/diff.gif)
+![Rich diff with change navigation](assets/rich-diff-with-navigation.png)
 
 ### Seamless Sync.
 
@@ -54,7 +52,7 @@ Enjoy it because this will be the last time you open the vanilla view.
 
 #### Rich Editor
 
-Rich editor allows to go back to default editor mode directly. Also allows opening in the browser. All information is automatically and instantly synced.
+The rich editor lets you jump straight back to the default editor, or open in the browser. Everything syncs automatically and instantly.
 
 ![rich-editor-overview](assets/rich-editor-overview.png)
 
@@ -80,10 +78,10 @@ The beloved `/` works out of the box. It's like you never left your favourite ed
 
 Tables have options to:
 
-+ add row above, add row below
-+ add column to the left, add columns to the right
-+ remove rows, remove columns
-+ drop the entire table
+- add row above, add row below
+- add column to the left, add columns to the right
+- remove rows, remove columns
+- drop the entire table
 
 You can write math using $\KaTeX$ in both inline and block modes.
 
@@ -105,10 +103,10 @@ Paste a YouTube or GitHub URL and get a rich card; the source stays a bare URL s
 
 ## Known Limitations
 
-+ Conversion from markdown to rich text and back to markdown is not one-to-one exact map. The markdown after is normalized. You can control this to some extent via the settings icon in the rich editor mode.
-+ Bold/italic adjacent to a word, when the run also contains a code span, can't be expressed in plain CommonMark (e.g. `**`bold`**Apples` parses as literal asterisks, not bold). The editor saves these as `**`bold`**<!---->Apples` — an empty HTML comment is the cleanest CommonMark-valid way to break the flanking run so the bold survives re-open. Adding a space (or any non-word char) avoids the separator entirely and is handled naturally.
+- Conversion from markdown to rich text and back to markdown is not one-to-one exact map. The markdown after is normalized. You can control this to some extent via the settings icon in the rich editor mode.
+- Bold/italic adjacent to a word, when the run also contains a code span, can't be expressed in plain CommonMark (e.g. `**`bold`**Apples` parses as literal asterisks, not bold). The editor saves these as `**`bold`**<!---->Apples` — an empty HTML comment is the cleanest CommonMark-valid way to break the flanking run so the bold survives re-open. Adding a space (or any non-word char) avoids the separator entirely and is handled naturally.
 
-***
+---
 
 ## Meta Thingies
 
@@ -120,13 +118,13 @@ Hit the Install button on the marketplace page. No login, setup or permissions r
 
 Every action is in the command palette under the `Prosedown:` prefix.
 
-| Command palette title     | Shortcut                                      | What it does                                                                                                                                                      |
-| ------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Toggle Rich/Source Editor | Cmd/Ctrl+Shift+M (on `.md` files)             | Swap the active `.md` between the rich editor and VS Code's default text editor.                                                                                  |
-| Find in Document          | Cmd/Ctrl+F (inside the rich editor)           | Open the in-editor search bar for the current rich-editor pane.                                                                                                   |
-| Open Rich Diff            | Right-click an SCM entry, or the diff toolbar | Open a side-by-side or rendered markdown diff of the selected file vs HEAD (or any two URIs).                                                                     |
-| Open in Browser           | —                                             | Spin up a local server and open the file in your default browser as the same rich editor — drag-and-drop images, leave it open as a tab, edits sync back to disk. |
-| Factory Reset Settings    | —                                             | Wipe all Prosedown settings back to defaults and re-show the welcome modal on the next file open. Confirms before applying.                                 |
+| Command palette title          | Shortcut                                      | What it does                                                                                                                                                      |
+| ------------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Toggle Prosedown/Source Editor | Cmd/Ctrl+Shift+M (on `.md` files)             | Swap the active `.md` between the Prosedown rich editor and VS Code's default text editor.                                                                        |
+| Find in Document               | Cmd/Ctrl+F (inside the rich editor)           | Open the in-editor search bar for the current rich-editor pane.                                                                                                   |
+| Open Rich Diff                 | Right-click an SCM entry, or the diff toolbar | Open a side-by-side or rendered markdown diff of the selected file vs HEAD (or any two URIs). AI-proposed edits open this automatically.                          |
+| Open in Browser                | —                                             | Spin up a local server and open the file in your default browser as the same rich editor — drag-and-drop images, leave it open as a tab, edits sync back to disk. |
+| Factory Reset Settings         | —                                             | Wipe all Prosedown settings back to defaults and re-show the welcome modal on the next file open. Confirms before applying.                                       |
 
 ### Keyboard shortcuts
 

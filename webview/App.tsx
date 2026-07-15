@@ -259,6 +259,7 @@ export function App() {
             oldContent={diffData.headContent}
             newContent={currentMarkdown}
             fileName={diffData.fileName}
+            baseUri={baseUri.current}
             layout={settings.diffLayout}
             mode={settings.diffMode}
             onClose={() => setDiffVisible(false)}

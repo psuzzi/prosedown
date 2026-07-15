@@ -49,13 +49,16 @@ export class ProsedownDiffPanel {
       this.active = null;
     }
     if (this.active) {
-      // Reuse existing panel — just swap content
+      // Reuse existing panel — full re-init (not just content) so the new
+      // file's baseUri, title and fileName replace the previous file's.
+      // (`refresh()` posts only content, leaving a stale baseUri → broken
+      // relative images for a file in a different folder.)
       this.active.leftUri = leftUri;
       this.active.rightUri = rightUri;
       this.active.title = title;
       this.active.panel.title = `Diff: ${title}`;
       this.active.panel.reveal(vscode.ViewColumn.Active);
-      await this.active.refresh();
+      await this.active.postInit();
       return;
     }
 
@@ -68,6 +71,7 @@ export class ProsedownDiffPanel {
         retainContextWhenHidden: true,
         localResourceRoots: [
           vscode.Uri.joinPath(context.extensionUri, "dist"),
+          ...(vscode.workspace.workspaceFolders?.map((f) => f.uri) || []),
         ],
       },
     );
@@ -103,6 +107,17 @@ export class ProsedownDiffPanel {
           this.panel.dispose();
         } else if (msg.type === "saveSettings") {
           await writeSettings(msg.settings as Record<string, unknown>);
+        } else if (msg.type === "editFile") {
+          // Open the real (on-disk) file in the Prosedown editor so the user can
+          // edit; saving refreshes this diff (it watches document saves).
+          const fileUri =
+            [this.rightUri, this.leftUri].find((u) => u.scheme === "file") ??
+            this.rightUri;
+          await vscode.commands.executeCommand(
+            "vscode.openWith",
+            fileUri,
+            "prosedown.editor",
+          );
         }
       }),
     );
@@ -168,12 +183,18 @@ export class ProsedownDiffPanel {
     } catch {
       // File didn't exist at ref → empty
     }
+    // Base for resolving relative image paths in the rendered diff.
+    const folderPath = path.dirname(this.rightUri.path || this.leftUri.path);
+    const baseUri = this.panel.webview
+      .asWebviewUri(vscode.Uri.file(folderPath))
+      .toString();
     this.panel.webview.postMessage({
       type: "diffInit",
       oldContent,
       newContent,
       fileName: path.basename(this.rightUri.fsPath || this.leftUri.fsPath),
       title: this.title,
+      baseUri,
       settings,
     });
   }
