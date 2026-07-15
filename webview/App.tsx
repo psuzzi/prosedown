@@ -82,8 +82,12 @@ export function App() {
       // Triple-click inside a code block selects just the clicked line
       // (like a normal code editor), not the whole block.
       handleTripleClick(view, pos) {
+        const codeBlock = view.state.schema.nodes.codeBlock;
         const $pos = view.state.doc.resolve(pos);
-        if ($pos.parent.type.name !== "codeBlock") return false;
+        if (!codeBlock || $pos.parent.type !== codeBlock) return false;
+        // A code block holds a single plain-text run (newlines are literal "\n",
+        // no inline nodes), so document positions map 1:1 to string indices —
+        // that's what lets the offset math below locate line boundaries.
         const text = $pos.parent.textContent;
         const blockStart = $pos.start();
         const offset = pos - blockStart;

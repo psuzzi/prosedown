@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { MutableRefObject } from "react";
 import type { Editor } from "@tiptap/react";
 import { DOMSerializer } from "@tiptap/pm/model";
-import type { EditorState } from "@tiptap/pm/state";
+import { NodeSelection, type EditorState } from "@tiptap/pm/state";
 import { htmlToMarkdownSync } from "./useVSCodeSync";
 import type { ProsedownSettings } from "../settings";
 
@@ -19,8 +19,8 @@ function selectionIsAllCode(state: EditorState): boolean {
   const codeMark = state.schema.marks.code;
 
   // Whole code block selected as a node.
-  const selNode = (state.selection as { node?: { type: unknown } }).node;
-  if (codeBlock && selNode && selNode.type === codeBlock) return true;
+  const sel = state.selection;
+  if (codeBlock && sel instanceof NodeSelection && sel.node.type === codeBlock) return true;
 
   // Selection sits inside a single code block.
   const $from = state.doc.resolve(from);
