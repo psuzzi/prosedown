@@ -2,6 +2,7 @@
 
 ## 1.0.x
 
+- Change: Mermaid diagrams now start with their **source box collapsed**, showing just the rendered diagram — click "source" to reveal/edit it. New empty blocks still open with the source visible so you can type, and a render error automatically reveals the source so you can fix it. ([#14](https://github.com/psuzzi/prosedown/issues/14))
 - Change: Markdown files opened in the Prosedown editor now show a distinct Prosedown mark — a bracketed "P" with a down-caret — in the editor tab instead of the generic markdown glyph, so Prosedown-opened files are easy to spot. ([#19](https://github.com/psuzzi/prosedown/issues/19))
 - Fix: The sticky-headings breadcrumb no longer flickers on idle documents. It was oscillating because the set of headings shown depended on the bar's own height (taller bar → more headings → taller bar). Membership is now based on the viewport fold alone, so the bar stays stable. The outline panel also stops re-rendering once a second when nothing changed. ([#21](https://github.com/psuzzi/prosedown/issues/21))
 - Change: Tables are now more compact and elegant, close to the VS Code markdown preview. A bolder top rule and header underline, lighter separators between rows, lightest separators between columns (inner only — no outer left/right border), no rule at the very bottom (like plain markdown), and tighter vertical rhythm. Also drops a header background that was a translucent-white overlay, invisible in light themes. ([#12](https://github.com/psuzzi/prosedown/issues/12))
@@ -13,6 +14,8 @@
 - **Rebrand & fork.** This project is now **Prosedown**, an independent fork of [Markdown Studio](https://github.com/chaudhary1337/markdown-studio) (MIT, © Tanishq Chaudhary). After contributing fixes upstream with no further activity there, development continues here at full speed on a derived solution. Same MIT license; the original authorship is acknowledged in `README.md` and `LICENSE`.
 - New identity: package `prosedown`, publisher `psuzzi`, Marketplace ID `psuzzi.prosedown`, new icon. All identifiers unified under the single `prosedown` prefix — config namespace (`prosedown.*`), command IDs (`prosedown.*`), and custom-editor view type (`prosedown.editor`). Settings now surface in the VS Code Settings UI under "Prosedown".
 - Note: because the extension ID changed, this installs alongside (not over) the upstream extension; uninstall the old one if you had it.
+- **Security:** Fixed a command-injection vulnerability (CWE-78) in browser mode. The local server behind "Open in Browser" built shell commands by interpolating an untrusted link `href` / file path and running them through `exec()`, so a crafted markdown link could execute arbitrary commands as the user when clicked. All affected call sites (open-link, git-diff, toggle-editor, …) now pass arguments to the process directly instead of through a shell.
+- Fix: Mermaid diagrams now follow the VS Code theme and stay readable in dark mode. Mermaid was keyed off the `vscode-dark` body class, which isn't present in the custom-editor webview, so dark themes fell back to the light preset and diagram arrows/labels washed out. It now detects the theme from the `data-vscode-theme-kind` attribute and re-applies it when the theme changes.
 
 _History below is from the upstream Markdown Studio project, retained for reference._
 
