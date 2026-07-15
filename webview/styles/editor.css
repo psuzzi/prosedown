@@ -294,22 +294,40 @@ html, body, #root {
   opacity: 0.7;
 }
 
-/* Tables */
+/* Tables — compact and elegant, close to the VS Code markdown preview. Visual
+   hierarchy: a bolder top rule + header underline, lighter separators between
+   rows, lightest separators between columns (inner only, no outer left/right
+   edge), and no rule at the very bottom (like plain markdown). */
 .tiptap-editor table {
   border-collapse: collapse;
   width: 100%;
   margin: 1em 0;
+  border-top: 1px solid rgba(127, 127, 127, 0.45);
 }
 
 .tiptap-editor th, .tiptap-editor td {
-  border: 1px solid var(--vscode-widget-border, #444);
-  padding: 6px 10px;
+  border: none;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+  padding: 3px 10px;
+  line-height: 1.4;
   text-align: left;
 }
 
+/* Lightest separators between columns only — not the extreme left/right edges. */
+.tiptap-editor th:not(:first-child),
+.tiptap-editor td:not(:first-child) {
+  border-left: 1px solid rgba(127, 127, 127, 0.12);
+}
+
+/* Header underline as bold as the top rule. */
 .tiptap-editor th {
-  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.45);
   font-weight: 600;
+}
+
+/* No rule at the very bottom of the table (matches plain markdown). */
+.tiptap-editor tr:last-child td {
+  border-bottom: none;
 }
 
 /* Task lists — Notion-style checkboxes */
