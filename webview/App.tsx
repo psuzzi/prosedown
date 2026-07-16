@@ -109,6 +109,7 @@ export function App() {
     status,
     readonly,
     frontmatter,
+    updateFrontmatter,
     searchVisible,
     setSearchVisible,
     diffVisible,
@@ -294,7 +295,11 @@ export function App() {
             </span>
           )}
         </div>
-        <FrontmatterBox frontmatter={frontmatter} />
+        <FrontmatterBox
+          frontmatter={frontmatter}
+          readonly={readonly}
+          onChange={updateFrontmatter}
+        />
         <EditorContent editor={editor} />
         {!readonly && <EditorBubbleMenu editor={editor} />}
         <TableControls editor={editor} containerRef={editorContainerRef} />

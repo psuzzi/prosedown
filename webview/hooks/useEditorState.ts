@@ -300,6 +300,21 @@ export function useEditorState({
     };
   }, [editor, handleUpdate, handleUpdateRef]);
 
+  // Edits from the frontmatter box: rebuild the fenced block, then reuse
+  // the standard edit pipeline (handleUpdate serializes the doc and
+  // prepends frontmatterRef). An emptied box removes the block entirely.
+  const updateFrontmatter = useCallback(
+    (inner: string) => {
+      const block = inner.trim()
+        ? `---\n${inner.replace(/\r?\n$/, "")}\n---\n`
+        : "";
+      frontmatterRef.current = block;
+      setFrontmatter(block);
+      handleUpdate();
+    },
+    [handleUpdate],
+  );
+
   // Persist the caret position per file so reopening a file lands the user
   // where they left off. Debounced to avoid flooding the host on every
   // selection tick.
@@ -342,26 +357,32 @@ export function useEditorState({
     vscodeApi.postMessage({ type: "requestGitDiff" });
   }, [diffVisible]);
 
-  // Current editor content as markdown (for the diff "new" side)
+  // Current editor content as markdown (for the diff "new" side). The
+  // editor doc never contains the frontmatter (it's stripped on load and
+  // re-prepended on save), so prepend it here too — otherwise the diff
+  // shows the whole block as deleted. `frontmatter` is a dep so edits in
+  // the frontmatter box refresh an open diff.
   const currentMarkdown = useMemo(() => {
     if (!editor || !diffVisible) return "";
     try {
       const html = editor.getHTML();
-      return htmlToMarkdownSync(
+      const markdown = htmlToMarkdownSync(
         html,
         baseUri.current,
         docFolderPath.current,
         settingsRef.current,
       );
+      return prependFrontmatter(markdown, frontmatterRef.current);
     } catch {
       return "";
     }
-  }, [editor, diffVisible, diffData, settingsRef]);
+  }, [editor, diffVisible, diffData, frontmatter, settingsRef]);
 
   return {
     status,
     readonly,
     frontmatter,
+    updateFrontmatter,
     searchVisible,
     setSearchVisible,
     diffVisible,
