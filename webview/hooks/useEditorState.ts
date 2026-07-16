@@ -56,6 +56,9 @@ export function useEditorState({
 
   const [status, setStatus] = useState<string | null>("Loading document...");
   const [readonly, setReadonly] = useState(false);
+  // Mirror of frontmatterRef for rendering the read-only collapsible box.
+  // The save round-trip still reads frontmatterRef; this is display-only.
+  const [frontmatter, setFrontmatter] = useState("");
   const [searchVisible, setSearchVisible] = useState(false);
   const [diffVisible, setDiffVisible] = useState(false);
   const [diffData, setDiffData] = useState<{
@@ -130,6 +133,7 @@ export function useEditorState({
           try {
             const { content: noFm, frontmatter } = extractFrontmatter(rawMd);
             frontmatterRef.current = frontmatter;
+            setFrontmatter(frontmatter);
             const html = await markdownToHtml(noFm, baseUri.current);
             editor.commands.setContent(html);
             // Place the caret: restore the last-known position for this
@@ -164,6 +168,7 @@ export function useEditorState({
             msg.content,
           );
           frontmatterRef.current = frontmatter;
+          setFrontmatter(frontmatter);
           const html = await markdownToHtml(noFm, baseUri.current);
           // setContent resets the ProseMirror selection to the doc end.
           // Snapshot the caret before replacing content and restore it
@@ -356,6 +361,7 @@ export function useEditorState({
   return {
     status,
     readonly,
+    frontmatter,
     searchVisible,
     setSearchVisible,
     diffVisible,

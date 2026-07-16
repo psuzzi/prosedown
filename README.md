@@ -4,6 +4,8 @@ Personal notes, research notes, Claude Code generated reports, random READMEs.
 
 I find it easier to read rich, block-based markdown than raw markdown — WYSIWYG (What You See Is What You Get), so the document on screen already looks the way it will read.
 
+![Prosedown feature showcase](assets/prosedown-feature-showcase-100pc-v2.gif)
+
 That's why Prosedown exists.
 
 ## The Cool Stuff

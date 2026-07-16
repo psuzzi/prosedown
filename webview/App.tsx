@@ -26,6 +26,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { EditorBubbleMenu } from "./components/EditorBubbleMenu";
 import { SetupPrompt, type SetupChoice } from "./components/SetupPrompt";
 import { DiffView } from "./components/DiffView";
+import { FrontmatterBox } from "./components/FrontmatterBox";
 import { TableControls } from "./components/TableControls";
 import { ImageInsertDialog } from "./components/ImageInsertDialog";
 import { useSettingsPanel } from "./hooks/useSettingsPanel";
@@ -107,6 +108,7 @@ export function App() {
   const {
     status,
     readonly,
+    frontmatter,
     searchVisible,
     setSearchVisible,
     diffVisible,
@@ -292,6 +294,7 @@ export function App() {
             </span>
           )}
         </div>
+        <FrontmatterBox frontmatter={frontmatter} />
         <EditorContent editor={editor} />
         {!readonly && <EditorBubbleMenu editor={editor} />}
         <TableControls editor={editor} containerRef={editorContainerRef} />
