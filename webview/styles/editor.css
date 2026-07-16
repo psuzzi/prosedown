@@ -108,6 +108,24 @@ html, body, #root {
   color: var(--vscode-foreground, #d4d4d4);
 }
 
+/* Editable variant (#33): a textarea that keeps the <pre> look. */
+.frontmatter-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  outline: none;
+  resize: vertical;
+  font-size: inherit;
+  line-height: 1.5;
+}
+
+.frontmatter-input:focus {
+  border-top-color: var(--vscode-focusBorder, #007fd4);
+}
+
 /* Tiptap editor base */
 .tiptap-editor {
   min-height: 100%;
