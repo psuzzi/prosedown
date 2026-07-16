@@ -73,6 +73,41 @@ html, body, #root {
   color: var(--vscode-textLink-foreground, #3794ff);
 }
 
+/* Frontmatter — read-only collapsible box, aligned with the editor's 2rem
+   content inset. Collapsed by default; reveals the raw YAML on expand. */
+.frontmatter-box {
+  margin: 0.5rem 2rem 0.75rem;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  border-radius: 6px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+  font-size: 13px;
+}
+
+.frontmatter-summary {
+  cursor: pointer;
+  padding: 6px 12px;
+  color: var(--vscode-descriptionForeground, #888);
+  user-select: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.frontmatter-summary:hover {
+  color: var(--vscode-foreground, #d4d4d4);
+}
+
+.frontmatter-content {
+  margin: 0;
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--vscode-foreground, #d4d4d4);
+}
+
 /* Tiptap editor base */
 .tiptap-editor {
   min-height: 100%;
