@@ -6,7 +6,9 @@
  *    or:  npm run serve -- [file.md]
  *
  * Supports multiple files via browser tabs:
- *   http://localhost:3333/edit?file=/absolute/path/to/file.md
+ *   http://localhost:3333/edit/<base64url-of-absolute-path>
+ * The path is base64url-encoded so Windows paths (drive colon,
+ * backslashes) transport safely in the URL.
  *
  * Each tab gets its own WebSocket, file watcher, and live save.
  * The CLI arg is optional — if given, auto-opens that file.
@@ -107,14 +109,16 @@ function removeClient(state: FileState, ws: WebSocket) {
 }
 
 // ---------------------------------------------------------------------------
-// Encode/decode directory paths for image-serving routes
+// Encode/decode absolute paths for URL transport (edit/ws/doc/upload routes).
+// base64url keeps the path opaque and URL-safe, so Windows paths
+// (C:\…, backslashes, drive colon) survive the round-trip unchanged.
 // ---------------------------------------------------------------------------
 
-function encodeDir(dir: string): string {
-  return Buffer.from(dir).toString("base64url");
+function encodePath(p: string): string {
+  return Buffer.from(p).toString("base64url");
 }
 
-function decodeDir(encoded: string): string {
+function decodePath(encoded: string): string {
   return Buffer.from(encoded, "base64url").toString();
 }
 
@@ -156,7 +160,10 @@ function buildHtml(filePath: string): string {
 </head>
 <body>
   <div id="root"></div>
-  <script>window.__BTRMK_FILE__ = ${JSON.stringify(filePath)};</script>
+  <script>
+    window.__BTRMK_FILE__ = ${JSON.stringify(filePath)};
+    window.__BTRMK_FILE_ENC__ = ${JSON.stringify(encodePath(filePath))};
+  </script>
   <script type="module" src="/webview.js"></script>
 </body>
 </html>`;
@@ -221,9 +228,11 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url || "/", `http://localhost:${PORT}`);
   const pathname = decodeURIComponent(url.pathname);
 
-  // /edit/<absolute-path> → editor for that file
+  // /edit/<base64url-absolute-path> → editor for that file. The path is
+  // base64url-encoded (not a raw pathname) so Windows paths work — see
+  // encodePath above.
   if (pathname.startsWith("/edit/")) {
-    const file = "/" + pathname.slice("/edit/".length);
+    const file = decodePath(pathname.slice("/edit/".length));
     if (!fs.existsSync(file)) {
       res.writeHead(404, { "Content-Type": "text/html" });
       res.end(buildErrorHtml("File not found", file, "Check the path and try again."));
@@ -257,11 +266,11 @@ const server = http.createServer((req, res) => {
     const initialFile = process.argv[2];
     if (initialFile) {
       const abs = path.resolve(initialFile);
-      res.writeHead(302, { Location: `/edit${abs}` });
+      res.writeHead(302, { Location: `/edit/${encodePath(abs)}` });
       res.end();
     } else {
       res.writeHead(200, { "Content-Type": "text/plain" });
-      res.end("Prosedown server running. Open /edit/<path-to-file.md> to edit a file.");
+      res.end("Prosedown server running. Open /edit/<base64url-of-absolute-path> to edit a file.");
     }
     return;
   }
@@ -274,7 +283,7 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ error: "Invalid upload path" }));
       return;
     }
-    const dir = decodeDir(uploadMatch[1]);
+    const dir = decodePath(uploadMatch[1]);
     const safeName = path.basename(decodeURIComponent(uploadMatch[2]));
     // Generate unique filename if conflict
     let finalName = safeName;
@@ -303,7 +312,7 @@ const server = http.createServer((req, res) => {
   // /doc/<base64dir>/<filename> → serve image from document folder
   const docMatch = pathname.match(/^\/doc\/([^/]+)\/(.+)$/);
   if (docMatch) {
-    const dir = decodeDir(docMatch[1]);
+    const dir = decodePath(docMatch[1]);
     const file = docMatch[2];
     if (serveStatic(path.join(dir, file), res)) return;
     res.writeHead(404); res.end("Not found");
@@ -323,7 +332,7 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ noServer: true });
 
-// Upgrade handler: accept /ws/<absolute-path>
+// Upgrade handler: accept /ws/<base64url-absolute-path>
 server.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url || "/", `http://localhost:${PORT}`);
   if (url.pathname.startsWith("/ws/")) {
@@ -335,7 +344,7 @@ server.on("upgrade", (req, socket, head) => {
 
 wss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
   const url = new URL(req.url || "/", `http://localhost:${PORT}`);
-  const filePath = "/" + decodeURIComponent(url.pathname.slice("/ws/".length));
+  const filePath = decodePath(url.pathname.slice("/ws/".length));
 
   if (!filePath || !fs.existsSync(filePath)) {
     ws.close(1008, "Invalid file path");
@@ -353,7 +362,7 @@ wss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
       case "ready": {
         const content = fs.readFileSync(filePath, "utf-8");
         state.lastWrittenContent = content;
-        const encodedDir = encodeDir(state.dirPath);
+        const encodedDir = encodePath(state.dirPath);
         ws.send(JSON.stringify({
           type: "init",
           content,
@@ -439,7 +448,7 @@ server.listen(PORT, () => {
   console.log(`  http://localhost:${PORT}`);
   if (initialFile) {
     const abs = path.resolve(initialFile);
-    const url = `http://localhost:${PORT}/edit${abs}`;
+    const url = `http://localhost:${PORT}/edit/${encodePath(abs)}`;
     console.log(`  Opening: ${path.basename(abs)}`);
     console.log();
     openExternal(url);

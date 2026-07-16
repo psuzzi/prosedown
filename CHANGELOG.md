@@ -2,6 +2,8 @@
 
 ## 1.0.x
 
+- Fix: **"Open in Browser" now works on Windows.** The browser-mode URLs embedded the raw file path and assumed POSIX form, so Windows paths (`C:\…`) produced broken links and the editor never loaded; paths now travel base64url-encoded end-to-end (page URL, WebSocket, redirects). The bundled server is also launched with VS Code's own Node runtime instead of relying on a `node` binary being on the PATH — commonly absent on Windows. ([#30](https://github.com/psuzzi/prosedown/issues/30))
+
 - Feature: YAML **frontmatter** is now visible in the Prosedown editor via a **collapsible box** at the top of the document (collapsed by default). Expand it to view the attributes (title, author, tags, …); the block is read-only here and still round-trips untouched on save. Previously frontmatter was hidden with no way to reveal it. ([#11](https://github.com/psuzzi/prosedown/issues/11))
 
 - Feature: Prosedown now renders a **rich diff for proposed edits and compares** instead of two plain rich editors — a git "Open Changes" or a Claude Code `[…] FILE.md` edit preview now opens the single rich diff panel (the same one behind **Open Rich Diff**), showing the actual changes vs the on-disk file. Relative **images render** in the diff, navigating changes (↑/↓ or j/k) **highlights** the current one, and an **Edit** button opens the file in the editor (the diff refreshes on save). Normal editing is unaffected. ([#16](https://github.com/psuzzi/prosedown/issues/16))

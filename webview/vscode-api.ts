@@ -24,11 +24,13 @@ const KEY = "__BTRMK_VSCODE_API__";
 
 function createBrowserShim(): VsCodeApi {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  // The HTML embeds __BTRMK_FILE__; fall back to parsing /edit/<path> from URL.
-  const file =
-    (window as any).__BTRMK_FILE__ ||
-    (location.pathname.startsWith("/edit/") ? "/" + location.pathname.slice("/edit/".length) : "");
-  const ws = new WebSocket(`${protocol}//${location.host}/ws${file}`);
+  // The file path travels base64url-encoded (raw paths in URLs break on
+  // Windows). The HTML embeds __BTRMK_FILE_ENC__; fall back to reusing the
+  // /edit/<base64url> pathname segment verbatim.
+  const encodedFile =
+    (window as any).__BTRMK_FILE_ENC__ ||
+    (location.pathname.startsWith("/edit/") ? location.pathname.slice("/edit/".length) : "");
+  const ws = new WebSocket(`${protocol}//${location.host}/ws/${encodedFile}`);
   let state: unknown = null;
 
   ws.addEventListener("message", (ev) => {
