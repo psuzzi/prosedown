@@ -183,18 +183,27 @@ export function activate(context: vscode.ExtensionContext) {
             "dist",
             "server.js"
           );
-          serverProcess = spawn("node", [serverScript], {
+          // Run the server with VS Code's own Node (ELECTRON_RUN_AS_NODE
+          // makes the Electron binary behave as plain node). Spawning a
+          // PATH `node` breaks on Windows, where Node.js is often not
+          // installed or not on PATH.
+          serverProcess = spawn(process.execPath, [serverScript], {
             cwd: context.extensionPath,
             stdio: "ignore",
             detached: false,
+            env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
           });
           serverProcess.on("exit", () => { serverProcess = null; });
+          serverProcess.on("error", () => { serverProcess = null; });
           // Give it a moment to start
           await new Promise((r) => setTimeout(r, 1500));
         }
 
+        // base64url-encode the path — a raw fsPath in the URL breaks on
+        // Windows (drive colon, backslashes, no leading slash).
+        const encodedPath = Buffer.from(filePath).toString("base64url");
         vscode.env.openExternal(
-          vscode.Uri.parse(`http://localhost:3333/edit${filePath}`)
+          vscode.Uri.parse(`http://localhost:3333/edit/${encodedPath}`)
         );
       }
     )
