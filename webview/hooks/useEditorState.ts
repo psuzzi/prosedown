@@ -10,6 +10,12 @@ import { extractFrontmatter, prependFrontmatter } from "../frontmatter";
 import { mergeSettings, type ProsedownSettings } from "../settings";
 import { vscodeApi, isBrowserMode } from "../vscode-api";
 
+// A window `focus` this soon after an in-editor pointerdown means the refocus
+// was caused by that click, so the click is placing the caret — the refocus
+// handler must not restore the old selection over it. Focus follows pointerdown
+// within tens of ms; 300 gives headroom without touching real alt-tab restores.
+const CLICK_REFOCUS_WINDOW_MS = 300;
+
 function mimeToExt(mime: string): string {
   const map: Record<string, string> = {
     "image/png": ".png",
@@ -215,22 +221,42 @@ export function useEditorState({
 
   // Restore cursor when the webview regains focus.
   // ProseMirror keeps the selection in state across blur, but the DOM
-  // selection gets cleared when the window/tab loses focus. Track whether
-  // the editor was the last-focused element and, on window focus, call
-  // editor.commands.focus() to re-apply the DOM selection from state.
+  // selection gets cleared when the window/tab loses focus. On refocus we
+  // re-apply the DOM selection from state — but with two guards (#35):
+  //  - if the refocus came from a click in the editor, skip it so the click
+  //    places the caret (don't clobber it with the stale selection);
+  //  - otherwise restore WITHOUT scrolling, so a caret the user scrolled away
+  //    from doesn't yank the viewport back.
   useEffect(() => {
     if (!editor) return;
     let editorWasLastFocused = false;
+    let lastPointerDownInEditor = 0;
     const onFocusIn = (e: FocusEvent) => {
       editorWasLastFocused = editor.view.dom.contains(e.target as Node);
     };
+    const onPointerDown = (e: PointerEvent) => {
+      if (editor.view.dom.contains(e.target as Node)) {
+        lastPointerDownInEditor = Date.now();
+      }
+    };
     const onWindowFocus = () => {
-      if (editorWasLastFocused) editor.commands.focus();
+      // A click that refocuses the editor must place the caret itself —
+      // skip the restore so we don't clobber the click's selection with the
+      // stale one (which left the caret at the old, now off-screen spot). #35
+      if (Date.now() - lastPointerDownInEditor < CLICK_REFOCUS_WINDOW_MS) return;
+      // Non-pointer refocus (alt-tab): re-apply the DOM caret the browser
+      // cleared on blur, but WITHOUT scrolling — scrollIntoView:true would
+      // yank the viewport to a caret the user has since scrolled away from.
+      if (editorWasLastFocused) {
+        editor.commands.focus(null, { scrollIntoView: false });
+      }
     };
     document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("focus", onWindowFocus);
     return () => {
       document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("focus", onWindowFocus);
     };
   }, [editor]);
