@@ -2,6 +2,7 @@
 
 ## 1.0.x
 
+- Fix: The editor no longer **jumps back to a previous cursor position** when you click after scrolling. When the webview regained focus it re-applied the caret *and scrolled it into view*, yanking the viewport to the stale selection you'd scrolled away from; it now restores the caret without scrolling. ([#35](https://github.com/psuzzi/prosedown/issues/35))
 - Feature: The **frontmatter box is now editable** — expand it and edit the YAML in place; changes save through the normal pipeline with the `---` fences kept intact, and clearing the box removes the block from the file. External changes (git, AI edits) refresh the box unless you're typing in it. Read-only panes keep the non-editable view. ([#33](https://github.com/psuzzi/prosedown/issues/33))
 
 - Fix: **"Open in Browser" now works on Windows.** The browser-mode URLs embedded the raw file path and assumed POSIX form, so Windows paths (`C:\…`) produced broken links and the editor never loaded; paths now travel base64url-encoded end-to-end (page URL, WebSocket, redirects). The bundled server is also launched with VS Code's own Node runtime instead of relying on a `node` binary being on the PATH — commonly absent on Windows. ([#30](https://github.com/psuzzi/prosedown/issues/30))
