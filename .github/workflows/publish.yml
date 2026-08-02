@@ -36,11 +36,21 @@ jobs:
       - name: Package .vsix
         run: npx vsce package --no-dependencies -o extension.vsix
 
+      # Both registries are published below, Marketplace first, and a Marketplace
+      # version can never be re-published. Failing between the two would leave a
+      # half-shipped release that re-tagging cannot fix, so check both tokens up
+      # front while nothing has shipped yet.
+      - name: Verify publish tokens are present
+        run: |
+          [ -n "$VSCE_PAT" ] || { echo "::error::VSCODE_PAT is not set"; exit 1; }
+          [ -n "$OVSX_PAT" ] || { echo "::error::OPENVSX_PAT is not set"; exit 1; }
+        env:
+          VSCE_PAT: ${{ secrets.VSCODE_PAT }}
+
       - name: Publish to VS Code Marketplace
         run: npx vsce publish --no-dependencies --packagePath extension.vsix -p $VSCE_PAT
         env:
           VSCE_PAT: ${{ secrets.VSCODE_PAT }}
 
       - name: Publish to Open VSX
-        if: env.OVSX_PAT != ''
         run: npx ovsx publish extension.vsix -p "$OVSX_PAT"
