@@ -1,3 +1,8 @@
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-Install-0098FF?logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=psuzzi.prosedown)
+[![Open VSX](https://img.shields.io/badge/Open%20VSX-Install-C160EF?logo=eclipseide&logoColor=white)](https://open-vsx.org/extension/psuzzi/prosedown)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/psuzzi/prosedown/blob/main/LICENSE)
+[![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.80.0-24a0ed)](https://code.visualstudio.com/)
+
 I read as much `.md` as all other programming languages combined.
 
 Personal notes, research notes, Claude Code generated reports, random READMEs.
@@ -114,7 +119,21 @@ Paste a YouTube or GitHub URL and get a rich card; the source stays a bare URL s
 
 ### Installation
 
-Hit the Install button on the marketplace page. No login, setup or permissions required. It works out of the box.
+Search for **Prosedown** in your editor's Extensions panel and hit Install. No login, setup or permissions required. It works out of the box.
+
+Prosedown is published to both extension registries, so it installs the same way in VS Code and in the VS Code-compatible editors:
+
+| Registry                                                                                    | Editors                                           |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=psuzzi.prosedown) | VS Code                                           |
+| [Open VSX](https://open-vsx.org/extension/psuzzi/prosedown)                                 | Cursor, Windsurf, VSCodium, Gitpod, Eclipse Theia |
+
+Or from the command line:
+
+```bash
+code --install-extension psuzzi.prosedown      # VS Code
+cursor --install-extension psuzzi.prosedown    # Cursor, Windsurf, VSCodium, …
+```
 
 ### Commands
 
@@ -152,9 +171,10 @@ I am actively using it myself, so expect frequent updates.
 
 ### Available Platforms
 
-VS Code: https://marketplace.visualstudio.com/items?itemName=psuzzi.prosedown
+- **VS Code Marketplace** — [marketplace.visualstudio.com/items?itemName=psuzzi.prosedown](https://marketplace.visualstudio.com/items?itemName=psuzzi.prosedown)
+- **Open VSX** — [open-vsx.org/extension/psuzzi/prosedown](https://open-vsx.org/extension/psuzzi/prosedown)
 
-Open VSX: https://open-vsx.org/extension/psuzzi/prosedown
+Both registries receive every release from the same build, so the two listings are always the same version.
 
 ### Acknowledgments
 
