@@ -2,7 +2,7 @@
   "name": "prosedown",
   "displayName": "Prosedown",
   "description": "Rich, block-based WYSIWYG markdown editing in VS Code — tables, math, Mermaid, and rich diffs.",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "publisher": "psuzzi",
   "license": "MIT",
   "repository": {
@@ -326,9 +326,10 @@
     }
   },
   "scripts": {
-    "test": "npx tsx test/test-conversions.ts && npx tsx test/test-roundtrip.ts",
+    "test": "npx tsx test/test-conversions.ts && npx tsx test/test-roundtrip.ts && npx tsx test/test-server-security.ts",
     "test:conversions": "npx tsx test/test-conversions.ts",
     "test:roundtrip": "npx tsx test/test-roundtrip.ts",
+    "test:security": "npx tsx test/test-server-security.ts",
     "build": "node esbuild.js",
     "watch": "node esbuild.js --watch",
     "serve": "node esbuild.js && npx tsx server/index.ts",

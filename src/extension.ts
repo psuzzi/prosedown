@@ -1,6 +1,23 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import { spawn, ChildProcess } from "child_process";
+import { randomBytes } from "crypto";
+import * as net from "net";
+
+/** Ask the OS for an unused loopback port (bind :0, read it, release it). Each
+ * VS Code instance gets its own server port so instances don't collide on a
+ * fixed port and a stale server can't shadow a new one (#51 / #58). */
+function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      const port = typeof addr === "object" && addr ? addr.port : 0;
+      srv.close(() => (port ? resolve(port) : reject(new Error("no free port"))));
+    });
+  });
+}
 import { ProsedownProvider } from "./provider";
 import { ProsedownDiffPanel } from "./diffPanel";
 import { SETTING_KEYS } from "../webview/settings";
@@ -147,6 +164,11 @@ export function activate(context: vscode.ExtensionContext) {
   // Open in Browser — spawns a single long-lived server, then opens
   // the file-specific URL. The server handles multiple files.
   let serverProcess: ChildProcess | null = null;
+  // Per-session secret shared with the spawned server (#51). Only URLs
+  // carrying it can drive the server's file read/write channel.
+  let serverToken = "";
+  // This instance's own server port (#51 / #58) — picked fresh per spawn.
+  let serverPort = 0;
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -187,23 +209,34 @@ export function activate(context: vscode.ExtensionContext) {
           // makes the Electron binary behave as plain node). Spawning a
           // PATH `node` breaks on Windows, where Node.js is often not
           // installed or not on PATH.
+          serverToken = randomBytes(24).toString("hex");
+          serverPort = await findFreePort();
           serverProcess = spawn(process.execPath, [serverScript], {
             cwd: context.extensionPath,
             stdio: "ignore",
             detached: false,
-            env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+            env: {
+              ...process.env,
+              ELECTRON_RUN_AS_NODE: "1",
+              PROSEDOWN_TOKEN: serverToken,
+              PORT: String(serverPort),
+            },
           });
-          serverProcess.on("exit", () => { serverProcess = null; });
-          serverProcess.on("error", () => { serverProcess = null; });
+          const reset = () => { serverProcess = null; serverToken = ""; serverPort = 0; };
+          serverProcess.on("exit", reset);
+          serverProcess.on("error", reset);
           // Give it a moment to start
           await new Promise((r) => setTimeout(r, 1500));
         }
 
         // base64url-encode the path — a raw fsPath in the URL breaks on
-        // Windows (drive colon, backslashes, no leading slash).
+        // Windows (drive colon, backslashes, no leading slash). The token
+        // gates the server's file channel; the port is this instance's own (#51).
         const encodedPath = Buffer.from(filePath).toString("base64url");
         vscode.env.openExternal(
-          vscode.Uri.parse(`http://localhost:3333/edit/${encodedPath}`)
+          vscode.Uri.parse(
+            `http://localhost:${serverPort}/edit/${encodedPath}?t=${serverToken}`
+          )
         );
       }
     )
