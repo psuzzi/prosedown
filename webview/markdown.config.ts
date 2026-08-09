@@ -246,7 +246,9 @@ function renumberOrderedLists(md: string): string {
   for (const line of lines) {
     const match = line.match(/^(\s*)(\d+)\.\s(.*)$/);
     if (match && match[1] === "") {
-      counter++;
+      // Seed from the list's first item so a deliberate start (e.g. a
+      // continued "6.") is kept; only re-sequence the items after it (#54).
+      counter = inList ? counter + 1 : parseInt(match[2], 10);
       inList = true;
       blankLineGap = false;
       result.push(`${counter}. ${match[3]}`);
