@@ -209,6 +209,18 @@ async function run() {
     "999999999. a\n999999999. b\n",
     "999999999. a\n1. b\n"
   );
+  // KNOWN BUG (filed): a loose nested ordered list with a non-1 start survives
+  // one save, then collapses on the second — remark-stringify tightens the
+  // list and a non-1 ordered list can't interrupt a paragraph (CommonMark
+  // §5.3), so pass 2 re-reads it as text. This case exists to (a) document the
+  // bug and (b) exercise roundtripCase's idempotence branch (it fails ONLY on
+  // the 2nd pass, so it proves #70's check is live).
+  await roundtripCase(
+    "loose nested ol, non-1 start — 2nd-pass collapse (known bug)",
+    "1. a\n\n   6. n1\n\n   6. n2\n\n2. b\n",
+    "1. a\n   6. n1\n   7. n2\n2. b\n",
+    { known: true }
+  );
   await roundtripCase(
     "ordered nested",
     "1. First\n   1. Sub-first\n   2. Sub-second\n2. Second"
