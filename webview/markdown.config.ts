@@ -249,6 +249,10 @@ function renumberOrderedLists(md: string): string {
       // Seed from the list's first item so a deliberate start (e.g. a
       // continued "6.") is kept; only re-sequence the items after it (#54).
       counter = inList ? counter + 1 : parseInt(match[2], 10);
+      // CommonMark caps ordered-list markers at 9 digits; a marker past that
+      // isn't a list item, so the row would merge into the one above on the
+      // next save. Fall back to 1 rather than emit an illegal 10-digit marker.
+      if (counter > 999_999_999) counter = 1;
       inList = true;
       blankLineGap = false;
       result.push(`${counter}. ${match[3]}`);

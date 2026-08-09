@@ -893,6 +893,11 @@ async function run() {
     normalizeMarkdown("5. a\n6. b\n7. c\n", DEFAULT_SETTINGS),
     "5. a\n6. b\n7. c\n"
   );
+  eq(
+    "settings: renumberOrderedLists clamps a >9-digit overflow, no illegal marker (#54)",
+    normalizeMarkdown("999999999. a\n999999999. b\n", DEFAULT_SETTINGS),
+    "999999999. a\n1. b\n"
+  );
 
   // bullet setting: normalizeMarkdown rewrites other bullets to preferred
   eq(
