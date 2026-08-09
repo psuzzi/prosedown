@@ -71,13 +71,20 @@ async function roundtripCase(
 ) {
   const actual = await roundTrip(input);
   const exp = expected ?? input;
-  const passed = normalize(actual) === normalize(exp);
+  // Idempotence: a second pass over the output must not change it further.
+  // Catches "opening + saving twice mutates content" bugs the single pass
+  // misses (#70; e.g. #54's >9-digit overflow was a 2nd-pass failure).
+  const secondPass = await roundTrip(actual);
+  const idempotent = normalize(secondPass) === normalize(actual);
+  const passed = normalize(actual) === normalize(exp) && idempotent;
   results.push({
     name,
     category: currentCategory,
     passed,
     expected: exp,
-    actual,
+    actual: idempotent
+      ? actual
+      : `${actual}\n  [NON-IDEMPOTENT — 2nd pass →]\n${secondPass}`,
     known: opts.known,
   });
 }
@@ -196,6 +203,12 @@ async function run() {
   );
   await roundtripCase("ordered simple", "1. First\n2. Second\n3. Third");
   await roundtripCase("ordered list starting at 5 (#54)", "5. First\n6. Second\n7. Third");
+  // >9-digit start is clamped and stays a fixed point across saves (#54/#70).
+  await roundtripCase(
+    "ordered list >9-digit start clamped, idempotent (#54/#70)",
+    "999999999. a\n999999999. b\n",
+    "999999999. a\n1. b\n"
+  );
   await roundtripCase(
     "ordered nested",
     "1. First\n   1. Sub-first\n   2. Sub-second\n2. Second"
