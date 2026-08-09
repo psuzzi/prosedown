@@ -71,13 +71,20 @@ async function roundtripCase(
 ) {
   const actual = await roundTrip(input);
   const exp = expected ?? input;
-  const passed = normalize(actual) === normalize(exp);
+  // Idempotence: a second pass over the output must not change it further.
+  // Catches "opening + saving twice mutates content" bugs the single pass
+  // misses (#70; e.g. #54's >9-digit overflow was a 2nd-pass failure).
+  const secondPass = await roundTrip(actual);
+  const idempotent = normalize(secondPass) === normalize(actual);
+  const passed = normalize(actual) === normalize(exp) && idempotent;
   results.push({
     name,
     category: currentCategory,
     passed,
     expected: exp,
-    actual,
+    actual: idempotent
+      ? actual
+      : `${actual}\n  [NON-IDEMPOTENT — 2nd pass →]\n${secondPass}`,
     known: opts.known,
   });
 }
@@ -196,6 +203,24 @@ async function run() {
   );
   await roundtripCase("ordered simple", "1. First\n2. Second\n3. Third");
   await roundtripCase("ordered list starting at 5 (#54)", "5. First\n6. Second\n7. Third");
+  // >9-digit start is clamped and stays a fixed point across saves (#54/#70).
+  await roundtripCase(
+    "ordered list >9-digit start clamped, idempotent (#54/#70)",
+    "999999999. a\n999999999. b\n",
+    "999999999. a\n1. b\n"
+  );
+  // KNOWN BUG (filed): a loose nested ordered list with a non-1 start survives
+  // one save, then collapses on the second — remark-stringify tightens the
+  // list and a non-1 ordered list can't interrupt a paragraph (CommonMark
+  // §5.3), so pass 2 re-reads it as text. This case exists to (a) document the
+  // bug and (b) exercise roundtripCase's idempotence branch (it fails ONLY on
+  // the 2nd pass, so it proves #70's check is live).
+  await roundtripCase(
+    "loose nested ol, non-1 start — 2nd-pass collapse (known bug)",
+    "1. a\n\n   6. n1\n\n   6. n2\n\n2. b\n",
+    "1. a\n   6. n1\n   7. n2\n2. b\n",
+    { known: true }
+  );
   await roundtripCase(
     "ordered nested",
     "1. First\n   1. Sub-first\n   2. Sub-second\n2. Second"
