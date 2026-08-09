@@ -3,6 +3,7 @@ import * as path from "path";
 import { spawn, ChildProcess } from "child_process";
 import { randomBytes } from "crypto";
 import * as net from "net";
+import * as http from "http";
 
 /** Ask the OS for an unused loopback port (bind :0, read it, release it). Each
  * VS Code instance gets its own server port so instances don't collide on a
@@ -16,6 +17,29 @@ function findFreePort(): Promise<number> {
       const port = typeof addr === "object" && addr ? addr.port : 0;
       srv.close(() => (port ? resolve(port) : reject(new Error("no free port"))));
     });
+  });
+}
+
+/** Resolve true once the local server actually answers on `port`, or false if
+ * the process has exited or `timeoutMs` elapses. Polls the token-free help
+ * route — a real reply, not a blind timer, gates opening the browser (#58). */
+function waitForServerReady(
+  port: number,
+  hasExited: () => boolean,
+  timeoutMs = 5000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (hasExited() || Date.now() > deadline) return resolve(false);
+      const req = http.get(
+        { host: "127.0.0.1", port, path: "/", timeout: 500 },
+        (res) => { res.resume(); resolve(true); }, // any reply = listening
+      );
+      req.on("error", () => setTimeout(tick, 100));
+      req.on("timeout", () => { req.destroy(); setTimeout(tick, 100); });
+    };
+    tick();
   });
 }
 import { ProsedownProvider } from "./provider";
@@ -222,11 +246,20 @@ export function activate(context: vscode.ExtensionContext) {
               PORT: String(serverPort),
             },
           });
-          const reset = () => { serverProcess = null; serverToken = ""; serverPort = 0; };
+          let exited = false;
+          const reset = () => { serverProcess = null; serverToken = ""; serverPort = 0; exited = true; };
           serverProcess.on("exit", reset);
           serverProcess.on("error", reset);
-          // Give it a moment to start
-          await new Promise((r) => setTimeout(r, 1500));
+          // Wait for the server to actually listen (was a blind 1.5s sleep):
+          // open the browser only once it answers, and surface an error if it
+          // never comes up instead of landing the user on a dead page (#58).
+          const ready = await waitForServerReady(serverPort, () => exited);
+          if (!ready) {
+            vscode.window.showErrorMessage(
+              "Prosedown: couldn't start the Open-in-Browser server. Please try again.",
+            );
+            return;
+          }
         }
 
         // base64url-encode the path — a raw fsPath in the URL breaks on
