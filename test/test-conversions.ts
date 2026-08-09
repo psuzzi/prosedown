@@ -195,6 +195,7 @@ async function run() {
     "- Parent item\n  - Child item\n  - Another child\n    - Grandchild\n- Back to parent"
   );
   await roundtripCase("ordered simple", "1. First\n2. Second\n3. Third");
+  await roundtripCase("ordered list starting at 5 (#54)", "5. First\n6. Second\n7. Third");
   await roundtripCase(
     "ordered nested",
     "1. First\n   1. Sub-first\n   2. Sub-second\n2. Second"
@@ -881,6 +882,21 @@ async function run() {
     "settings: renumberOrderedLists=false keeps original numbers",
     normalizeMarkdown("1. a\n1. b\n1. c\n", mergeSettings({ renumberOrderedLists: false })),
     "1. a\n1. b\n1. c\n"
+  );
+  eq(
+    "settings: renumberOrderedLists keeps a non-1 start (#54)",
+    normalizeMarkdown("6. a\n6. b\n6. c\n", DEFAULT_SETTINGS),
+    "6. a\n7. b\n8. c\n"
+  );
+  eq(
+    "settings: renumberOrderedLists leaves a correct non-1 sequence (#54)",
+    normalizeMarkdown("5. a\n6. b\n7. c\n", DEFAULT_SETTINGS),
+    "5. a\n6. b\n7. c\n"
+  );
+  eq(
+    "settings: renumberOrderedLists clamps a >9-digit overflow, no illegal marker (#54)",
+    normalizeMarkdown("999999999. a\n999999999. b\n", DEFAULT_SETTINGS),
+    "999999999. a\n1. b\n"
   );
 
   // bullet setting: normalizeMarkdown rewrites other bullets to preferred
