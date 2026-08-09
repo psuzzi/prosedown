@@ -30,7 +30,10 @@ function createBrowserShim(): VsCodeApi {
   const encodedFile =
     (window as any).__BTRMK_FILE_ENC__ ||
     (location.pathname.startsWith("/edit/") ? location.pathname.slice("/edit/".length) : "");
-  const ws = new WebSocket(`${protocol}//${location.host}/ws/${encodedFile}`);
+  // Per-session token the server injected into the page — required on /ws (#51).
+  const token = (window as any).__BTRMK_TOKEN__ || "";
+  const query = token ? `?t=${encodeURIComponent(token)}` : "";
+  const ws = new WebSocket(`${protocol}//${location.host}/ws/${encodedFile}${query}`);
   let state: unknown = null;
 
   ws.addEventListener("message", (ev) => {

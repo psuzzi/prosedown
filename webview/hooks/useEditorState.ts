@@ -83,8 +83,11 @@ export function useEditorState({
     if (isBrowserMode) {
       const match = baseUri.current.match(/\/doc\/([^/]+)$/);
       if (!match) throw new Error("Cannot determine upload target");
+      // Per-session token — required on /upload (#51).
+      const token = (window as any).__BTRMK_TOKEN__ || "";
+      const query = token ? `?t=${encodeURIComponent(token)}` : "";
       const resp = await fetch(
-        `/upload/${match[1]}/${encodeURIComponent(name)}`,
+        `/upload/${match[1]}/${encodeURIComponent(name)}${query}`,
         { method: "POST", body: file },
       );
       if (!resp.ok) throw new Error("Upload failed");

@@ -31,6 +31,54 @@ const SETTINGS_FILE = path.join(
 );
 
 // ---------------------------------------------------------------------------
+// Security (#51). The server can read/write local files, so it must only be
+// driven by the user's own browser session:
+//  - listen on loopback (below) so the LAN can't reach it;
+//  - a per-session TOKEN (set by the extension that spawns us, echoed into the
+//    page and required on /edit, /ws, /upload) gates every party that doesn't
+//    hold the secret — including a local process that forges Origin;
+//  - an Origin allowlist on state-changing routes blocks cross-origin browser
+//    pages (which can't be stopped by same-origin policy for WebSockets).
+// ---------------------------------------------------------------------------
+
+const TOKEN = process.env.PROSEDOWN_TOKEN || "";
+const ALLOWED_ORIGINS = new Set([
+  `http://localhost:${PORT}`,
+  `http://127.0.0.1:${PORT}`,
+]);
+
+/** Required token match (when a token is configured). */
+function tokenOk(url: URL): boolean {
+  return TOKEN === "" || url.searchParams.get("t") === TOKEN;
+}
+
+/** Reject a present Origin that isn't ours; absent Origin (non-browser) is
+ * left to the token gate. */
+function originOk(req: http.IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  return !origin || ALLOWED_ORIGINS.has(origin);
+}
+
+/** An existing markdown *file* — the unit browser mode is allowed to serve. */
+function isMarkdownFile(p: string): boolean {
+  try {
+    return fs.statSync(p).isFile() && p.toLowerCase().endsWith(".md");
+  } catch {
+    return false;
+  }
+}
+
+/** True only for a directory that belongs to a currently-open document —
+ * stops /doc and /upload from touching arbitrary directories. */
+function isOpenDir(dir: string): boolean {
+  const resolved = path.resolve(dir);
+  for (const state of openFiles.values()) {
+    if (path.resolve(state.dirPath) === resolved) return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Settings persistence (simple JSON file)
 // ---------------------------------------------------------------------------
 
@@ -163,6 +211,7 @@ function buildHtml(filePath: string): string {
   <script>
     window.__BTRMK_FILE__ = ${JSON.stringify(filePath)};
     window.__BTRMK_FILE_ENC__ = ${JSON.stringify(encodePath(filePath))};
+    window.__BTRMK_TOKEN__ = ${JSON.stringify(TOKEN)};
   </script>
   <script type="module" src="/webview.js"></script>
 </body>
@@ -232,6 +281,11 @@ const server = http.createServer((req, res) => {
   // base64url-encoded (not a raw pathname) so Windows paths work — see
   // encodePath above.
   if (pathname.startsWith("/edit/")) {
+    if (!tokenOk(url)) {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      res.end("Forbidden");
+      return;
+    }
     const file = decodePath(pathname.slice("/edit/".length));
     if (!fs.existsSync(file)) {
       res.writeHead(404, { "Content-Type": "text/html" });
@@ -277,6 +331,11 @@ const server = http.createServer((req, res) => {
 
   // Image upload: POST /upload/<base64dir>/<filename>
   if (req.method === "POST" && pathname.startsWith("/upload/")) {
+    if (!originOk(req) || !tokenOk(url)) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Forbidden" }));
+      return;
+    }
     const uploadMatch = pathname.match(/^\/upload\/([^/]+)\/(.+)$/);
     if (!uploadMatch) {
       res.writeHead(400, { "Content-Type": "application/json" });
@@ -284,6 +343,12 @@ const server = http.createServer((req, res) => {
       return;
     }
     const dir = decodePath(uploadMatch[1]);
+    // Only write into a directory that belongs to an open document.
+    if (!isOpenDir(dir)) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Forbidden" }));
+      return;
+    }
     const safeName = path.basename(decodeURIComponent(uploadMatch[2]));
     // Generate unique filename if conflict
     let finalName = safeName;
@@ -313,8 +378,12 @@ const server = http.createServer((req, res) => {
   const docMatch = pathname.match(/^\/doc\/([^/]+)\/(.+)$/);
   if (docMatch) {
     const dir = decodePath(docMatch[1]);
-    const file = docMatch[2];
-    if (serveStatic(path.join(dir, file), res)) return;
+    // Only serve images from an open document's own folder, and only files
+    // that actually resolve *inside* it (no `../` traversal out).
+    const target = path.resolve(dir, docMatch[2]);
+    if (isOpenDir(dir) && (target === path.resolve(dir) || target.startsWith(path.resolve(dir) + path.sep))) {
+      if (serveStatic(target, res)) return;
+    }
     res.writeHead(404); res.end("Not found");
     return;
   }
@@ -335,7 +404,9 @@ const wss = new WebSocketServer({ noServer: true });
 // Upgrade handler: accept /ws/<base64url-absolute-path>
 server.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url || "/", `http://localhost:${PORT}`);
-  if (url.pathname.startsWith("/ws/")) {
+  // Only our own browser session may drive the WS (which reads/writes files):
+  // right path + our Origin (or none) + the per-session token.
+  if (url.pathname.startsWith("/ws/") && originOk(req) && tokenOk(url)) {
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
   } else {
     socket.destroy();
@@ -346,7 +417,9 @@ wss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
   const url = new URL(req.url || "/", `http://localhost:${PORT}`);
   const filePath = decodePath(url.pathname.slice("/ws/".length));
 
-  if (!filePath || !fs.existsSync(filePath)) {
+  // Same restriction the /edit HTTP route enforces: an existing .md *file*.
+  // Without this the WS read/write sinks reach any file on disk.
+  if (!filePath || !isMarkdownFile(filePath)) {
     ws.close(1008, "Invalid file path");
     return;
   }
@@ -395,7 +468,9 @@ wss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
       }
       case "openLink": {
         const href = msg.href as string;
-        if (href) openExternal(href);
+        // Only open web/mail links in the OS handler — never an arbitrary
+        // local path or app-URL scheme from this channel.
+        if (href && /^(https?|mailto):/i.test(href)) openExternal(href);
         break;
       }
       case "promptImageUrl": {
@@ -442,7 +517,7 @@ wss.on("connection", (ws: WebSocket, req: http.IncomingMessage) => {
 // Start
 // ---------------------------------------------------------------------------
 
-server.listen(PORT, () => {
+server.listen(PORT, "127.0.0.1", () => {
   const initialFile = process.argv[2];
   console.log(`\n  Prosedown server`);
   console.log(`  http://localhost:${PORT}`);
