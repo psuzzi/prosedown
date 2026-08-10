@@ -25,10 +25,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkRehype from "remark-rehype";
 import rehypeStringify from "rehype-stringify";
-import rehypeParse from "rehype-parse";
-import rehypeRemark from "rehype-remark";
-import remarkStringify from "remark-stringify";
-import { MARKDOWN_CONFIG, normalizeMarkdown } from "../webview/markdown.config";
+import { buildMdPipeline, normalizeMarkdown } from "../webview/markdown.config";
 import {
   mathHandlers,
   PIPE_PH,
@@ -102,12 +99,7 @@ export async function roundTrip(
   html = html.replace(/<li([^>]*)>\s*<p>([\s\S]*?)<\/p>/g, "<li$1>$2");
 
   // 6. HTML → md
-  const mdResult = await unified()
-    .use(rehypeParse, { fragment: true })
-    .use(rehypeRemark)
-    .use(remarkGfm)
-    .use(remarkStringify, MARKDOWN_CONFIG)
-    .process(html);
+  const mdResult = await buildMdPipeline().process(html);
   let output = normalizeMarkdown(String(mdResult));
 
   // 6b. Restore math from placeholders
@@ -163,12 +155,7 @@ export async function mdToHtml(md: string): Promise<string> {
  */
 export async function htmlToMd(html: string): Promise<string> {
   html = html.replace(/<li([^>]*)>\s*<p>([\s\S]*?)<\/p>/g, "<li$1>$2");
-  const mdResult = await unified()
-    .use(rehypeParse, { fragment: true })
-    .use(rehypeRemark)
-    .use(remarkGfm)
-    .use(remarkStringify, MARKDOWN_CONFIG)
-    .process(html);
+  const mdResult = await buildMdPipeline().process(html);
   let md = normalizeMarkdown(String(mdResult));
   md = md.replace(/&#x20;/g, " ");
   md = md.replace(/&amp;/g, "&");

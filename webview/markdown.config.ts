@@ -5,6 +5,11 @@
  * See remark-stringify options:
  * https://github.com/remarkjs/remark/tree/main/packages/remark-stringify#options
  */
+import { unified } from "unified";
+import rehypeParse from "rehype-parse";
+import rehypeRemark from "rehype-remark";
+import remarkGfm from "remark-gfm";
+import remarkStringify from "remark-stringify";
 import { DEFAULT_SETTINGS, type ProsedownSettings } from "./settings";
 
 /**
@@ -28,6 +33,24 @@ export function buildMarkdownConfig(settings: ProsedownSettings = DEFAULT_SETTIN
 
 /** Back-compat export for the default config. */
 export const MARKDOWN_CONFIG = buildMarkdownConfig(DEFAULT_SETTINGS);
+
+/**
+ * The shared HTML → markdown pipeline:
+ * rehype-parse → rehype-remark → remark-gfm → remark-stringify.
+ *
+ * Defined once and used by both the save path and the clipboard path in
+ * `useVSCodeSync.ts` and by the test mirror in `test/pipeline.ts`, so the three
+ * cannot drift. This is also the seam that future mdast transforms plug into
+ * (added with `.use(...)` before `remark-stringify`, where the tree is still
+ * live). Callers pick `.process()` (async) or `.processSync()`.
+ */
+export function buildMdPipeline(settings: ProsedownSettings = DEFAULT_SETTINGS) {
+  return unified()
+    .use(rehypeParse, { fragment: true })
+    .use(rehypeRemark)
+    .use(remarkGfm)
+    .use(remarkStringify, buildMarkdownConfig(settings));
+}
 
 /**
  * Post-process markdown to fix formatting issues
