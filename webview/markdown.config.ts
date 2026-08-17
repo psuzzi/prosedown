@@ -6,6 +6,8 @@
  * https://github.com/remarkjs/remark/tree/main/packages/remark-stringify#options
  */
 import { unified } from "unified";
+import { visit } from "unist-util-visit";
+import type { Root } from "mdast";
 import rehypeParse from "rehype-parse";
 import rehypeRemark from "rehype-remark";
 import remarkGfm from "remark-gfm";
@@ -49,7 +51,40 @@ export function buildMdPipeline(settings: ProsedownSettings = DEFAULT_SETTINGS) 
     .use(rehypeParse, { fragment: true })
     .use(rehypeRemark)
     .use(remarkGfm)
+    .use(codeInfoTransform, settings)
     .use(remarkStringify, buildMarkdownConfig(settings));
+}
+
+/**
+ * Normalize fenced-code **info strings** on the mdast (a `code` node's `lang`),
+ * before serialization. This is the tree-based replacement for the old text
+ * passes `shellscriptToBash` and `applyDefaultCodeBlockLang` — and because it
+ * walks `code` nodes, it can only ever touch a real fence, never a fence shown
+ * *inside* another fence (whose body is the opaque `code.value`).
+ *
+ * - `shellscript` → `bash` (when the setting is on).
+ * - a bare fence gets the user's `defaultCodeBlockLang`, if any.
+ * - with no default set, a `text`/`plaintext` label is stripped (never a real
+ *   language) — mirrors the old behaviour exactly.
+ */
+function codeInfoTransform(settings: ProsedownSettings) {
+  return (tree: Root) => {
+    const dflt = settings.defaultCodeBlockLang;
+    visit(tree, "code", (node) => {
+      if (settings.shellscriptToBash && node.lang === "shellscript") {
+        node.lang = "bash";
+      }
+      if (!node.lang && dflt) {
+        node.lang = dflt;
+      } else if (
+        node.lang &&
+        !dflt &&
+        (node.lang === "text" || node.lang === "plaintext")
+      ) {
+        node.lang = null;
+      }
+    });
+  };
 }
 
 /**
@@ -63,9 +98,6 @@ export function normalizeMarkdown(
   md: string,
   settings: ProsedownSettings = DEFAULT_SETTINGS
 ): string {
-  if (settings.shellscriptToBash) {
-    md = md.replace(/^```shellscript$/gm, "```bash");
-  }
   // Replace non-preferred bullet markers with the preferred one
   // (remark config handles this but bulletOther may still produce the other)
   const others = (["-", "*", "+"] as const).filter((b) => b !== settings.bullet);
@@ -98,32 +130,7 @@ export function normalizeMarkdown(
   if (settings.compactLists) {
     md = compactLists(md);
   }
-  // Apply / strip default code block language label.
-  md = applyDefaultCodeBlockLang(md, settings.defaultCodeBlockLang);
   return md;
-}
-
-/**
- * When the user picks a defaultCodeBlockLang, give bare ``` fences that
- * label. When it's empty, strip labels that look like our default ("text",
- * "plaintext") — never strip real languages.
- */
-function applyDefaultCodeBlockLang(md: string, lang: string): string {
-  const lines = md.split("\n");
-  let fenceCount = 0; // 0 = outside, odd = just opened, even = closed
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(\s*)```([^\s`]*)\s*$/);
-    if (!m) continue;
-    fenceCount++;
-    if (fenceCount % 2 === 0) continue; // closing fence
-    const [, indent, existing] = m;
-    if (!existing && lang) {
-      lines[i] = `${indent}\`\`\`${lang}`;
-    } else if (existing && !lang && (existing === "text" || existing === "plaintext")) {
-      lines[i] = `${indent}\`\`\``;
-    }
-  }
-  return lines.join("\n");
 }
 
 /**

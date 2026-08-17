@@ -25,7 +25,7 @@
  */
 
 import { roundTrip, mdToHtml, htmlToMd } from "./pipeline";
-import { normalizeMarkdown, buildMarkdownConfig } from "../webview/markdown.config";
+import { normalizeMarkdown, buildMarkdownConfig, buildMdPipeline } from "../webview/markdown.config";
 import { DEFAULT_SETTINGS, mergeSettings } from "../webview/settings";
 import { extractFrontmatter, prependFrontmatter } from "../webview/frontmatter";
 import {
@@ -110,6 +110,21 @@ function assert(name: string, condition: boolean, detail?: string, opts: { known
     expected: "OK",
     known: opts.known,
   });
+}
+
+/**
+ * Fenced-code info-string normalization (shellscript→bash, defaultCodeBlockLang)
+ * moved out of `normalizeMarkdown` into a `code`-node transform inside
+ * `buildMdPipeline` (slice 1 of #78). Exercise it through the real pipeline from
+ * an HTML code-block fixture, the same way rehype-remark feeds the save path.
+ */
+function codeFencePipeline(
+  lang: string,
+  body: string,
+  settings = DEFAULT_SETTINGS
+): string {
+  const cls = lang ? ` class="language-${lang}"` : "";
+  return String(buildMdPipeline(settings).processSync(`<pre><code${cls}>${body}</code></pre>`));
 }
 
 // ============================================================================
@@ -299,10 +314,10 @@ async function run() {
     "```\nplain code\nno language\n```"
   );
 
-  // shellscript → bash normalization
+  // shellscript → bash normalization (code-node transform, slice 1 of #78)
   eq(
-    "normalizeMarkdown: shellscript → bash",
-    normalizeMarkdown("```shellscript\necho hi\n```\n"),
+    "pipeline: shellscript → bash",
+    codeFencePipeline("shellscript", "echo hi"),
     "```bash\necho hi\n```\n"
   );
 
@@ -888,12 +903,12 @@ async function run() {
   // shellscriptToBash toggle
   eq(
     "settings: shellscriptToBash=true rewrites label (default)",
-    normalizeMarkdown("```shellscript\necho hi\n```\n", DEFAULT_SETTINGS),
+    codeFencePipeline("shellscript", "echo hi", DEFAULT_SETTINGS),
     "```bash\necho hi\n```\n"
   );
   eq(
     "settings: shellscriptToBash=false keeps shellscript",
-    normalizeMarkdown("```shellscript\necho hi\n```\n", mergeSettings({ shellscriptToBash: false })),
+    codeFencePipeline("shellscript", "echo hi", mergeSettings({ shellscriptToBash: false })),
     "```shellscript\necho hi\n```\n"
   );
 
@@ -939,23 +954,37 @@ async function run() {
   // defaultCodeBlockLang
   eq(
     "settings: defaultCodeBlockLang='' leaves bare fences alone (default)",
-    normalizeMarkdown("```\nhello\n```\n", DEFAULT_SETTINGS),
+    codeFencePipeline("", "hello", DEFAULT_SETTINGS),
     "```\nhello\n```\n"
   );
   eq(
     "settings: defaultCodeBlockLang='text' labels bare fences when user opts in",
-    normalizeMarkdown("```\nhello\n```\n", mergeSettings({ defaultCodeBlockLang: "text" })),
+    codeFencePipeline("", "hello", mergeSettings({ defaultCodeBlockLang: "text" })),
     "```text\nhello\n```\n"
   );
   eq(
     "settings: defaultCodeBlockLang='' strips text label",
-    normalizeMarkdown("```text\nhello\n```\n", mergeSettings({ defaultCodeBlockLang: "" })),
+    codeFencePipeline("text", "hello", mergeSettings({ defaultCodeBlockLang: "" })),
     "```\nhello\n```\n"
   );
   eq(
     "settings: defaultCodeBlockLang leaves real languages alone",
-    normalizeMarkdown("```python\nprint('x')\n```\n", mergeSettings({ defaultCodeBlockLang: "" })),
+    codeFencePipeline("python", "print('x')", mergeSettings({ defaultCodeBlockLang: "" })),
     "```python\nprint('x')\n```\n"
+  );
+
+  // slice 1 of #78: the code-node transform is fence-aware — a fence shown
+  // INSIDE another fence is opaque content, never rewritten. The old text
+  // passes were fence-blind here and would have corrupted these.
+  eq(
+    "pipeline: shellscript shown inside a markdown fence is NOT rewritten",
+    codeFencePipeline("markdown", "```shellscript\necho hi\n```"),
+    "````markdown\n```shellscript\necho hi\n```\n````\n"
+  );
+  eq(
+    "pipeline: bare fence inside a fence keeps no default lang label",
+    codeFencePipeline("markdown", "```\nplain\n```", mergeSettings({ defaultCodeBlockLang: "text" })),
+    "````markdown\n```\nplain\n```\n````\n"
   );
 
   // --------------------------------------------------------------------------
