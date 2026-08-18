@@ -127,6 +127,22 @@ function codeFencePipeline(
   return String(buildMdPipeline(settings).processSync(`<pre><code${cls}>${body}</code></pre>`));
 }
 
+/**
+ * Ordered/unordered-list numbering and bullet markers moved out of
+ * `normalizeMarkdown` into remark-stringify options + `orderedListGuard` inside
+ * `buildMdPipeline` (slice 2 of #78). Exercise them through the real html→md
+ * path from a list HTML fixture (as rehype-remark feeds the save path).
+ */
+function olThroughPipeline(items: string[], settings = DEFAULT_SETTINGS, start?: number): string {
+  const s = start != null ? ` start="${start}"` : "";
+  const html = `<ol${s}>` + items.map((t) => `<li>${t}</li>`).join("") + `</ol>`;
+  return String(buildMdPipeline(settings).processSync(html));
+}
+function ulThroughPipeline(items: string[], settings = DEFAULT_SETTINGS): string {
+  const html = `<ul>` + items.map((t) => `<li>${t}</li>`).join("") + `</ul>`;
+  return String(buildMdPipeline(settings).processSync(html));
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -218,11 +234,13 @@ async function run() {
   );
   await roundtripCase("ordered simple", "1. First\n2. Second\n3. Third");
   await roundtripCase("ordered list starting at 5 (#54)", "5. First\n6. Second\n7. Third");
-  // >9-digit start is clamped and stays a fixed point across saves (#54/#70).
+  // >9-digit start would emit an illegal 10-digit marker, so orderedListGuard
+  // resets the list to start at 1; result stays a fixed point across saves
+  // (#54/#70). (Was "999999999. a\n1. b\n" under the old text clamp.)
   await roundtripCase(
     "ordered list >9-digit start clamped, idempotent (#54/#70)",
     "999999999. a\n999999999. b\n",
-    "999999999. a\n1. b\n"
+    "1. a\n2. b\n"
   );
   // KNOWN BUG (filed): a loose nested ordered list with a non-1 start survives
   // one save, then collapses on the second — remark-stringify tightens the
@@ -461,14 +479,14 @@ async function run() {
   // --------------------------------------------------------------------------
 
   eq(
-    "bullet * → -",
-    normalizeMarkdown("* one\n* two\n* three\n"),
+    "bullet * → - (serializer bullet option)",
+    ulThroughPipeline(["one", "two", "three"]),
     "- one\n- two\n- three\n"
   );
 
   eq(
-    "renumber ordered list",
-    normalizeMarkdown("1. first\n1. second\n1. third\n"),
+    "renumber ordered list (serializer incrementListMarker)",
+    olThroughPipeline(["first", "second", "third"]),
     "1. first\n2. second\n3. third\n"
   );
 
@@ -912,43 +930,50 @@ async function run() {
     "```shellscript\necho hi\n```\n"
   );
 
-  // renumberOrderedLists toggle
+  // renumberOrderedLists toggle → the serializer's incrementListMarker option
   eq(
     "settings: renumberOrderedLists=true renumbers (default)",
-    normalizeMarkdown("1. a\n1. b\n1. c\n", DEFAULT_SETTINGS),
+    olThroughPipeline(["a", "b", "c"], DEFAULT_SETTINGS),
     "1. a\n2. b\n3. c\n"
   );
   eq(
     "settings: renumberOrderedLists=false keeps original numbers",
-    normalizeMarkdown("1. a\n1. b\n1. c\n", mergeSettings({ renumberOrderedLists: false })),
+    olThroughPipeline(["a", "b", "c"], mergeSettings({ renumberOrderedLists: false })),
     "1. a\n1. b\n1. c\n"
   );
   eq(
     "settings: renumberOrderedLists keeps a non-1 start (#54)",
-    normalizeMarkdown("6. a\n6. b\n6. c\n", DEFAULT_SETTINGS),
+    olThroughPipeline(["a", "b", "c"], DEFAULT_SETTINGS, 6),
     "6. a\n7. b\n8. c\n"
   );
   eq(
     "settings: renumberOrderedLists leaves a correct non-1 sequence (#54)",
-    normalizeMarkdown("5. a\n6. b\n7. c\n", DEFAULT_SETTINGS),
+    olThroughPipeline(["a", "b", "c"], DEFAULT_SETTINGS, 5),
     "5. a\n6. b\n7. c\n"
   );
   eq(
-    "settings: renumberOrderedLists clamps a >9-digit overflow, no illegal marker (#54)",
-    normalizeMarkdown("999999999. a\n999999999. b\n", DEFAULT_SETTINGS),
-    "999999999. a\n1. b\n"
+    "settings: orderedListGuard clamps a >9-digit overflow to a legal marker (#54)",
+    olThroughPipeline(["a", "b"], DEFAULT_SETTINGS, 999999999),
+    "1. a\n2. b\n"
   );
 
-  // bullet setting: normalizeMarkdown rewrites other bullets to preferred
+  // bullet setting → the serializer's `bullet` option
   eq(
     "settings: bullet='*' converts - to *",
-    normalizeMarkdown("- one\n- two\n", mergeSettings({ bullet: "*" })),
+    ulThroughPipeline(["one", "two"], mergeSettings({ bullet: "*" })),
     "* one\n* two\n"
   );
   eq(
     "settings: bullet='+' converts - to +",
-    normalizeMarkdown("- one\n- two\n", mergeSettings({ bullet: "+" })),
+    ulThroughPipeline(["one", "two"], mergeSettings({ bullet: "+" })),
     "+ one\n+ two\n"
+  );
+  // slice 2 of #78: a numbered list shown INSIDE a fence is opaque content and
+  // is never renumbered (the old text pass corrupted it — this is issue #68).
+  eq(
+    "pipeline: numbered list inside a markdown fence is NOT renumbered (#68)",
+    codeFencePipeline("markdown", "6. a\n6. b"),
+    "```markdown\n6. a\n6. b\n```\n"
   );
 
   // defaultCodeBlockLang

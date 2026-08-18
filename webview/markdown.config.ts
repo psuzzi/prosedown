@@ -30,6 +30,11 @@ export function buildMarkdownConfig(settings: ProsedownSettings = DEFAULT_SETTIN
     fence: "`" as const,
     fences: true,
     rule: settings.rule,
+    // Ordered-list numbering is the serializer's job: true re-sequences from the
+    // list's start (1,2,3…); false keeps each item's own number. This replaces
+    // the old text pass `renumberOrderedLists` (slice 2 of #78), so it can never
+    // touch a numbered list shown inside a fenced code block.
+    incrementListMarker: settings.renumberOrderedLists,
   };
 }
 
@@ -52,7 +57,28 @@ export function buildMdPipeline(settings: ProsedownSettings = DEFAULT_SETTINGS) 
     .use(rehypeRemark)
     .use(remarkGfm)
     .use(codeInfoTransform, settings)
+    .use(orderedListGuard)
     .use(remarkStringify, buildMarkdownConfig(settings));
+}
+
+/**
+ * Guard against an illegal ordered-list marker. CommonMark caps ordered markers
+ * at 9 digits; remark-stringify increments from `list.start`, so a list starting
+ * near the cap would emit a 10-digit marker (e.g. 999999999 → 1000000000). That
+ * is no longer a list item and would break on the next parse, so reset such a
+ * list to start at 1. Replaces the clamp the old text `renumberOrderedLists`
+ * carried (#54); operates on the tree, so it never sees fenced code.
+ */
+function orderedListGuard() {
+  return (tree: Root) => {
+    visit(tree, "list", (node) => {
+      if (!node.ordered) return;
+      const start = node.start ?? 1;
+      if (start + Math.max(0, node.children.length - 1) > 999_999_999) {
+        node.start = 1;
+      }
+    });
+  };
 }
 
 /**
@@ -98,21 +124,12 @@ export function normalizeMarkdown(
   md: string,
   settings: ProsedownSettings = DEFAULT_SETTINGS
 ): string {
-  // Replace non-preferred bullet markers with the preferred one
-  // (remark config handles this but bulletOther may still produce the other)
-  const others = (["-", "*", "+"] as const).filter((b) => b !== settings.bullet);
-  // Use a non-character-class alternation to sidestep regex-escape pitfalls
-  const otherBulletsPattern = others.map((b) => (b === "*" ? "\\*" : b === "+" ? "\\+" : "-")).join("|");
-  md = md.replace(
-    new RegExp(`^(\\s*)(?:${otherBulletsPattern})\\s{1,3}`, "gm"),
-    `$1${settings.bullet} `
-  );
-  // Normalize ordered list spacing: "1.  " → "1. "
-  md = md.replace(/^(\s*\d+\.)\s{2,}/gm, "$1 ");
+  // Bullet marker, ordered-list spacing, and ordered-list renumbering are all
+  // handled natively by remark-stringify now (the `bullet` and
+  // `incrementListMarker` options + `orderedListGuard`), inside buildMdPipeline
+  // and before serialization — so they can never rewrite a list shown inside a
+  // fenced code block (slice 2 of #78).
   md = fixTaskLists(md);
-  if (settings.renumberOrderedLists) {
-    md = renumberOrderedLists(md);
-  }
   if (settings.unescapeSpecialChars) {
     md = unescapeSpecialChars(md);
   }
@@ -260,45 +277,6 @@ function fixTaskLists(md: string): string {
     final.push(result[k]);
   }
   return final.join("\n");
-}
-
-/**
- * Renumber consecutive ordered list items.
- * BlockNote outputs each item as "1." — this fixes them to 1. 2. 3. etc.
- */
-function renumberOrderedLists(md: string): string {
-  const lines = md.split("\n");
-  const result: string[] = [];
-  let counter = 0;
-  let inList = false;
-  let blankLineGap = false;
-
-  for (const line of lines) {
-    const match = line.match(/^(\s*)(\d+)\.\s(.*)$/);
-    if (match && match[1] === "") {
-      // Seed from the list's first item so a deliberate start (e.g. a
-      // continued "6.") is kept; only re-sequence the items after it (#54).
-      counter = inList ? counter + 1 : parseInt(match[2], 10);
-      // CommonMark caps ordered-list markers at 9 digits; a marker past that
-      // isn't a list item, so the row would merge into the one above on the
-      // next save. Fall back to 1 rather than emit an illegal 10-digit marker.
-      if (counter > 999_999_999) counter = 1;
-      inList = true;
-      blankLineGap = false;
-      result.push(`${counter}. ${match[3]}`);
-    } else if (line.trim() === "" && inList) {
-      blankLineGap = true;
-      result.push(line);
-    } else {
-      if (line.trim() !== "" && !line.match(/^\s*\d+\.\s/)) {
-        inList = false;
-        counter = 0;
-        blankLineGap = false;
-      }
-      result.push(line);
-    }
-  }
-  return result.join("\n");
 }
 
 /**
