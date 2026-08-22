@@ -110,8 +110,8 @@ Paste a YouTube or GitHub URL and get a rich card; the source stays a bare URL s
 
 ## Known Limitations
 
-- Opening a file never rewrites it. Saving is surgical: only the text you actually change is spliced back. Untouched top-level blocks stay byte-identical (whitespace, `*` vs `_`, list tightness, setext headings, fence labels, …). Editing one list item keeps that list's original markers, indent, and the other items; only the edited item's words change.
-- A whole table or code fence is still one top-level block — editing a cell or fence rewrites that block. An edited item's own inline markers, or a paragraph whose mark tree changed (new bold, a link URL, …), still follow the serialization settings below.
+- Opening a file never rewrites it. Saving is surgical: only the text you actually change is spliced back. Untouched top-level blocks stay byte-identical (whitespace, `*` vs `_`, list tightness, setext headings, fence labels, …). Editing one list item keeps that list's original markers, indent, and the other items; only the edited item's words change. New items inherit the surrounding `*`/`-`/`+` (or ordered) marker.
+- Tables, fences, thematic breaks, blockquotes, task-list checkboxes, heading style (ATX vs setext), hard-break syntax, and unedited image/link wrapping stay original unless you change that meaning (one cell, fence body, checkbox toggle, …). A paragraph whose mark tree changed (new bold, a changed link URL, …) still follows the serialization settings below.
 - Conversion of an edited region from rich text back to markdown is not a one-to-one exact map. You can control normalization of those rewritten spans via the settings icon in the rich editor mode.
 - Bold/italic adjacent to a word, when the run also contains a code span, can't be expressed in plain CommonMark (e.g. `**`bold`**Apples` parses as literal asterisks, not bold). The editor saves these as `**`bold`**<!---->Apples` — an empty HTML comment is the cleanest CommonMark-valid way to break the flanking run so the bold survives re-open. Adding a space (or any non-word char) avoids the separator entirely and is handled naturally.
 

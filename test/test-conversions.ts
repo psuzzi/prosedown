@@ -1293,6 +1293,158 @@ async function run() {
     `got:\n${orderedMerged}`,
   );
 
+  const tableSrc = [
+    "| Left | Right | Mid |",
+    "|:-----|------:|:---:|",
+    "| a    |    b  |  c  |",
+    "| x    |    y  |  z  |",
+    "",
+  ].join("\n");
+  const tableCanon = await roundTrip(tableSrc);
+  const tableEditedCanon = tableCanon.replace("| b     |", "| bb    |");
+  const tableMerged = surgicalMerge(tableSrc, tableEditedCanon, tableCanon);
+  assert(
+    "editing one table cell keeps :---- / ----: separator alignment",
+    tableMerged.includes("|:-----|------:|:---:|"),
+    `separator rewritten:\n${tableMerged}`,
+  );
+  assert(
+    "editing one table cell keeps unedited cells byte-identical",
+    tableMerged.includes("| a    |") &&
+      tableMerged.includes("| x    |    y  |  c  |".slice(0, 8)) &&
+      tableMerged.includes("|    y  |") &&
+      tableMerged.includes("bb"),
+    `got:\n${tableMerged}`,
+  );
+  assert(
+    "unedited table row stays a slice of the original table",
+    tableMerged.includes("| x    |    y  |  z  |"),
+    `row rewritten:\n${tableMerged}`,
+  );
+
+  const fenceSrc = "~~~shellscript\necho hi\n~~~\n";
+  const fenceCanon = await roundTrip(fenceSrc);
+  const fenceEdited = fenceCanon.replace("echo hi", "echo bye");
+  const fenceMerged = surgicalMerge(fenceSrc, fenceEdited, fenceCanon);
+  assert(
+    "editing a ~~~shellscript fence keeps tildes and shellscript label",
+    fenceMerged.includes("~~~shellscript") &&
+      fenceMerged.includes("echo bye") &&
+      !fenceMerged.includes("```") &&
+      !fenceMerged.includes("bash"),
+    `got:\n${fenceMerged}`,
+  );
+
+  const fenceIndentSrc = "  ```python\n  print(1)\n  ```\n";
+  const fenceIndentCanon = await roundTrip(fenceIndentSrc);
+  const fenceIndentEdited = fenceIndentCanon.replace("print(1)", "print(2)");
+  const fenceIndentMerged = surgicalMerge(
+    fenceIndentSrc,
+    fenceIndentEdited,
+    fenceIndentCanon,
+  );
+  assert(
+    "editing an indented fence keeps indent and language",
+    fenceIndentMerged.includes("  ```python") &&
+      fenceIndentMerged.includes("  print(2)") &&
+      fenceIndentMerged.includes("  ```"),
+    `got:\n${fenceIndentMerged}`,
+  );
+
+  const hrSrc = "***\n\nKeep me.\n";
+  const hrCanon = await roundTrip(hrSrc);
+  const hrEdited = hrCanon.replace("Keep me.", "Kept.");
+  const hrMerged = surgicalMerge(hrSrc, hrEdited, hrCanon);
+  assert(
+    "editing a nearby paragraph keeps *** thematic break",
+    hrMerged.startsWith("***\n") && hrMerged.includes("Kept."),
+    `got:\n${hrMerged}`,
+  );
+
+  const bqSrc = ">  hello\n>\n>  *world*\n";
+  const bqCanon = await roundTrip(bqSrc);
+  const bqEdited = bqCanon.replace("hello", "hello2");
+  const bqMerged = surgicalMerge(bqSrc, bqEdited, bqCanon);
+  assert(
+    "editing a blockquote keeps > spacing and nested emphasis markers",
+    bqMerged.includes(">  hello2") && bqMerged.includes(">  *world*"),
+    `got:\n${bqMerged}`,
+  );
+
+  const inheritSrc = "* alpha\n* beta\n";
+  const inheritCanon = await roundTrip(inheritSrc);
+  const inheritEdited = inheritCanon.replace(/^- /gm, "- ").includes("- alpha")
+    ? inheritCanon.replace(/\n$/, "\n- gamma\n")
+    : "- alpha\n- beta\n- gamma\n";
+  const inheritMerged = surgicalMerge(inheritSrc, inheritEdited, inheritCanon);
+  assert(
+    "newly inserted list item inherits surrounding * marker",
+    inheritMerged.includes("* alpha") &&
+      inheritMerged.includes("* beta") &&
+      inheritMerged.includes("* gamma") &&
+      !/^- /m.test(inheritMerged),
+    `got:\n${inheritMerged}`,
+  );
+
+  const taskSrc = "- [X] Done\n- [ ] Todo\n";
+  const taskCanon = await roundTrip(taskSrc);
+  const taskEditedText = taskCanon.replace("Done", "Done!");
+  const taskTextMerged = surgicalMerge(taskSrc, taskEditedText, taskCanon);
+  assert(
+    "editing task text keeps [X] checkbox style",
+    taskTextMerged.includes("- [X] Done!") && taskTextMerged.includes("- [ ] Todo"),
+    `got:\n${taskTextMerged}`,
+  );
+  const taskToggled = taskCanon.replace("[x] Done", "[ ] Done");
+  const taskToggleMerged = surgicalMerge(taskSrc, taskToggled, taskCanon);
+  assert(
+    "toggling a task flips checked state but does not rewrite [X] into [x]",
+    taskToggleMerged.includes("- [ ] Done") &&
+      taskToggleMerged.includes("- [ ] Todo") &&
+      !taskToggleMerged.includes("[x]"),
+    `got:\n${taskToggleMerged}`,
+  );
+
+  const emphSrc = "A paragraph with *star emphasis* and __underscore bold__.\n";
+  const emphCanon = await roundTrip(emphSrc);
+  const emphEdited = emphCanon.replace("emphasis", "em");
+  const emphMerged = surgicalMerge(emphSrc, emphEdited, emphCanon);
+  assert(
+    "text-only emphasis edit keeps original * / __ markers",
+    emphMerged.includes("*star em*") && emphMerged.includes("__underscore bold__"),
+    `got:\n${emphMerged}`,
+  );
+
+  const imgSrc = "![alt](<http://ex.com/a.png> 'Hi')\n";
+  const imgCanon = await roundTrip(imgSrc);
+  const imgEdited = imgCanon.replace("alt", "alt2");
+  const imgMerged = surgicalMerge(imgSrc, imgEdited, imgCanon);
+  assert(
+    "editing image alt keeps <> url wrap and title quote style",
+    imgMerged.includes("![alt2](<http://ex.com/a.png> 'Hi')"),
+    `got:\n${imgMerged}`,
+  );
+
+  const setextSrc = "Title\n=====\n\nbody\n";
+  const setextCanon = await roundTrip(setextSrc);
+  const setextEdited = setextCanon.replace("Title", "Title2");
+  const setextMerged = surgicalMerge(setextSrc, setextEdited, setextCanon);
+  assert(
+    "editing setext heading text keeps setext underline",
+    setextMerged.includes("Title2\n=====") && !setextMerged.includes("# Title"),
+    `got:\n${setextMerged}`,
+  );
+
+  const brSrc = "line one  \nline two\n";
+  const brCanon = await roundTrip(brSrc);
+  const brEdited = brCanon.replace("line one", "line 1");
+  const brMerged = surgicalMerge(brSrc, brEdited, brCanon);
+  assert(
+    "editing text around a two-space hard break keeps two trailing spaces",
+    brMerged.includes("line 1  \nline two"),
+    `got:\n${JSON.stringify(brMerged)}`,
+  );
+
   // --------------------------------------------------------------------------
   // Print report
   // --------------------------------------------------------------------------

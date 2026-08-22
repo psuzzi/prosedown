@@ -7,11 +7,13 @@
  * byte-identical — whitespace, `*` vs `_`, list tightness, setext
  * underlines, fence labels, etc.
  *
- * A dirty list / blockquote is merged recursively: kept children are
+ * A dirty list / blockquote / table is merged recursively: kept children are
  * original slices; a dirty list item keeps its original marker and indent
- * and only replaces the edited body. A dirty paragraph whose mark tree is
- * unchanged splices new text into the original bytes (so `*` / `_` / `__`
- * stay put).
+ * and only replaces the edited body. New list items inherit the surrounding
+ * marker. A dirty paragraph whose mark tree is unchanged splices new text
+ * into the original bytes (so `*` / `_` / `__` stay put). Fences, thematic
+ * breaks, heading style, and checkboxes keep their original markers unless
+ * the user changed that meaning.
  *
  * `originalCanonical` is a full-document serialize of the same editor
  * snapshot that `original` came from (or of the file on open). Comparing
@@ -266,22 +268,292 @@ function textLeaves(
   return out;
 }
 
-/** Shape of phrasing/block marks, ignoring text values but keeping urls, code, depth. */
+/** Shape of phrasing/block marks, ignoring text values but keeping urls, code, depth.
+ *  Image alt is omitted so an alt-only edit can still keep url wrapping / title quotes.
+ */
 function shapeIgnoringText(node: any): string {
   if (!node) return "";
   if (node.type === "text") return "text";
   let extra = "";
   if (node.type === "heading") extra = `:${node.depth}`;
   else if (node.type === "link" || node.type === "linkReference")
-    extra = `:${node.url ?? ""}:${node.identifier ?? ""}`;
+    extra = `:${node.url ?? ""}:${node.title ?? ""}:${node.identifier ?? ""}`;
   else if (node.type === "image" || node.type === "imageReference")
-    extra = `:${node.url ?? ""}:${node.alt ?? ""}:${node.identifier ?? ""}`;
+    extra = `:${node.url ?? ""}:${node.title ?? ""}:${node.identifier ?? ""}`;
   else if (node.type === "inlineCode" || node.type === "inlineMath")
     extra = `:${node.value ?? ""}`;
   else if (node.type === "listItem") extra = `:chk:${node.checked}`;
   else if (node.type === "list") extra = `:ord:${!!node.ordered}`;
   const kids = (node.children ?? []).map(shapeIgnoringText).join(",");
   return `${node.type}${extra}[${kids}]`;
+}
+
+function imagesOf(node: any): any[] {
+  const out: any[] = [];
+  const walk = (n: any) => {
+    if (!n) return;
+    if (n.type === "image") {
+      out.push(n);
+      return;
+    }
+    for (const ch of n.children ?? []) walk(ch);
+  };
+  walk(node);
+  return out;
+}
+
+/** Parse `![alt](dest)` so we can rebuild with original url wrapping / title quotes. */
+function rewriteImage(raw: string, o: any, n: any): string | null {
+  const m = raw.match(/^!\[([\s\S]*?)\]\(([\s\S]*)\)$/);
+  if (!m) return null;
+  const dest = m[2];
+  let i = 0;
+  while (i < dest.length && /\s/.test(dest[i])) i++;
+  let urlRaw = "";
+  if (dest[i] === "<") {
+    const end = dest.indexOf(">", i);
+    if (end < 0) return null;
+    urlRaw = dest.slice(i, end + 1);
+    i = end + 1;
+  } else {
+    const start = i;
+    while (i < dest.length && !/\s/.test(dest[i])) i++;
+    urlRaw = dest.slice(start, i);
+  }
+  const afterUrl = dest.slice(i);
+  const titleM = afterUrl.match(/^(\s*)(['"])([\s\S]*)\2(\s*)$/);
+  const urlSame = (o.url ?? "") === (n.url ?? "");
+  const titleSame = (o.title ?? null) === (n.title ?? null);
+  const urlPart = urlSame
+    ? urlRaw
+    : urlRaw.startsWith("<")
+      ? `<${n.url ?? ""}>`
+      : (n.url ?? "");
+  let titlePart = "";
+  if (n.title) {
+    if (titleSame && titleM) {
+      titlePart = titleM[1] + titleM[2] + titleM[3] + titleM[2] + titleM[4];
+    } else {
+      const q = titleM ? titleM[2] : '"';
+      titlePart = (titleM ? titleM[1] : " ") + q + n.title + q;
+    }
+  }
+  return `![${n.alt ?? ""}](${urlPart}${titlePart})`;
+}
+
+function restyleInsertedListItem(
+  newText: string,
+  oKids: Kid[],
+  origMd: string,
+): string {
+  const sample = oKids.find((k) => listMarkerPrefix(origMd, k.node));
+  if (!sample) return newText;
+  const samplePrefix = listMarkerPrefix(origMd, sample.node)!;
+  const newM = newText.match(/^(\s*(?:[-*+]|\d+[.)])\s+)/);
+  if (!newM) return newText;
+  const sm = samplePrefix.match(/^(\s*)([-*+]|(\d+)([.)]))(\s*)/);
+  const nm = newM[1].match(/^(\s*)([-*+]|(\d+)([.)]))(\s*)/);
+  if (!sm || !nm) return newText;
+  let prefix: string;
+  if (sm[3] != null) {
+    prefix = `${sm[1]}${nm[3] ?? sm[3]}${sm[4]}${sm[5] || " "}`;
+  } else {
+    prefix = `${sm[1]}${sm[2]}${sm[5] || " "}`;
+  }
+  let body = newText.slice(newM[1].length);
+  const sampleText = sample.text;
+  const sampleBox = sampleText.match(/\[([xX ])\]/);
+  const newBox = body.match(/^\[([xX ])\]/);
+  if (sampleBox && newBox) {
+    let fill = newBox[1];
+    if (fill !== " ") {
+      const checkedLetter = sampleText.match(/\[([xX])\]/);
+      fill = checkedLetter ? checkedLetter[1] : fill;
+    }
+    body = `[${fill}]` + body.slice(newBox[0].length);
+  }
+  return prefix + body;
+}
+
+function quoteLinePrefix(origMd: string, bq: any): string {
+  const start = bq.position?.start?.offset ?? 0;
+  const nl = origMd.indexOf("\n", start);
+  const first = origMd.slice(start, nl < 0 ? undefined : nl);
+  const m = first.match(/^(>+[ \t]*)/);
+  if (!m) return "> ";
+  return /[ \t]$/.test(m[1]) ? m[1] : m[1] + " ";
+}
+
+function prefixQuoteLines(text: string, prefix: string): string {
+  return text
+    .split("\n")
+    .map((l) => (l.startsWith(">") ? l : prefix + l))
+    .join("\n");
+}
+
+function applyCheckboxState(
+  itemText: string,
+  o: any,
+  n: any,
+): string {
+  if (o.checked === n.checked) return itemText;
+  if (n.checked == null && o.checked == null) return itemText;
+  const m = itemText.match(/^(\s*(?:[-*+]|\d+[.)])\s+)\[([xX ])\]/);
+  if (!m) return itemText;
+  let fill: string;
+  if (!n.checked) fill = " ";
+  else if (m[2] === "X" || m[2] === "x") fill = m[2];
+  else fill = "x";
+  return itemText.replace(
+    /^(\s*(?:[-*+]|\d+[.)])\s+)\[([xX ])\]/,
+    `$1[${fill}]`,
+  );
+}
+
+function isTableSepLine(line: string): boolean {
+  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(line);
+}
+
+function mergeTableRow(
+  origMd: string,
+  o: any,
+  canonMd: string,
+  c: any,
+  newMd: string,
+  n: any,
+): string | null {
+  const oKids = kidsOf(origMd, o);
+  const cKids = kidsOf(canonMd, c);
+  const nKids = kidsOf(newMd, n);
+  const oStart = o.position?.start?.offset;
+  const oEnd = o.position?.end?.offset;
+  if (!oKids || !cKids || !nKids || oStart == null || oEnd == null) return null;
+  if (
+    oKids.length !== nKids.length ||
+    oKids.length !== cKids.length ||
+    oKids.length === 0
+  ) {
+    return null;
+  }
+  let result = origMd.slice(oStart, oEnd);
+  for (let i = oKids.length - 1; i >= 0; i--) {
+    if (normalizeMd(cKids[i].text) === normalizeMd(nKids[i].text)) continue;
+    const merged =
+      mergeNode(
+        origMd,
+        oKids[i].node,
+        canonMd,
+        cKids[i].node,
+        newMd,
+        nKids[i].node,
+      ) ?? spliceTextLikes(origMd, oKids[i].node, newMd, nKids[i].node);
+    if (merged == null) return null;
+    result =
+      result.slice(0, oKids[i].start - oStart) +
+      merged +
+      result.slice(oKids[i].end - oStart);
+  }
+  return result;
+}
+
+function mergeTable(
+  origMd: string,
+  o: any,
+  canonMd: string,
+  c: any,
+  newMd: string,
+  n: any,
+): string | null {
+  const oKids = kidsOf(origMd, o);
+  const cKids = kidsOf(canonMd, c);
+  const nKids = kidsOf(newMd, n);
+  const oStart = o.position?.start?.offset;
+  const oEnd = o.position?.end?.offset;
+  if (!oKids || !cKids || !nKids || oStart == null || oEnd == null) return null;
+  const origText = origMd.slice(oStart, oEnd);
+  const sepLine = origText.split("\n").find(isTableSepLine);
+  if (!sepLine) return null;
+
+  const canonToOrig =
+    oKids.length === cKids.length
+      ? cKids.map((_, i) => i)
+      : (() => {
+          const ops = align(
+            oKids,
+            cKids,
+            (a, b) => fingerprint("n", a.text) === fingerprint("n", b.text),
+          );
+          const map: Array<number | null> = Array(cKids.length).fill(null);
+          for (const op of ops) {
+            if (op.kind === "equal") map[op.bi] = op.ai;
+          }
+          return map;
+        })();
+
+  const ops = align(
+    cKids,
+    nKids,
+    (a, b) => normalizeMd(a.text) === normalizeMd(b.text),
+  );
+  const paired = pairAlignOps(ops);
+  if (paired.length === 0) return null;
+
+  const rows: string[] = [];
+  for (const op of paired) {
+    if (op.kind === "keep") {
+      const origIdx = canonToOrig[op.ai];
+      rows.push(origIdx != null ? oKids[origIdx].text : nKids[op.bi].text);
+    } else if (op.kind === "merge") {
+      const origIdx = canonToOrig[op.ai];
+      let content: string | null = null;
+      if (origIdx != null) {
+        content = mergeTableRow(
+          origMd,
+          oKids[origIdx].node,
+          canonMd,
+          cKids[op.ai].node,
+          newMd,
+          nKids[op.bi].node,
+        );
+      }
+      rows.push(content ?? nKids[op.bi].text);
+    } else {
+      rows.push(nKids[op.bi].text);
+    }
+  }
+  if (rows.length === 0) return null;
+  return [rows[0], sepLine, ...rows.slice(1)].join("\n");
+}
+
+function mergeCode(
+  origMd: string,
+  o: any,
+  canonMd: string,
+  c: any,
+  newMd: string,
+  n: any,
+): string | null {
+  const oStart = o.position?.start?.offset;
+  const oEnd = o.position?.end?.offset;
+  if (oStart == null || oEnd == null) return null;
+  const raw = origMd.slice(oStart, oEnd);
+  const lines = raw.split("\n");
+  if (lines.length < 2) return null;
+  const open = lines[0];
+  const close = lines[lines.length - 1];
+  const om = open.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
+  if (!om) return null;
+  const langChanged = (c?.lang ?? "") !== (n?.lang ?? "");
+  const newOpen = langChanged
+    ? `${om[1]}${om[2]}${n.lang ?? ""}${n.meta ? ` ${n.meta}` : ""}`
+    : open;
+  const cm = close.match(/^(\s*)(`{3,}|~{3,})/);
+  const bodyIndent = cm?.[1] ?? om[1];
+  const body = String(n.value ?? "")
+    .split("\n")
+    .map((l: string) => bodyIndent + l)
+    .join("\n");
+  return `${newOpen}\n${body}\n${close}`;
 }
 
 function spliceTextLikes(
@@ -297,12 +569,32 @@ function spliceTextLikes(
   const oLeaves = textLeaves(origNode);
   const nLeaves = textLeaves(newNode);
   if (oLeaves.length !== nLeaves.length) return null;
-  if (oLeaves.length === 0) return origMd.slice(oStart, oEnd);
+  const oImgs = imagesOf(origNode);
+  const nImgs = imagesOf(newNode);
+  if (oImgs.length !== nImgs.length) return null;
+  if (oLeaves.length === 0 && oImgs.length === 0) return origMd.slice(oStart, oEnd);
+  type Rep = { start: number; end: number; text: string };
+  const reps: Rep[] = [];
+  for (let i = 0; i < oLeaves.length; i++) {
+    reps.push({
+      start: oLeaves[i].start,
+      end: oLeaves[i].end,
+      text: nLeaves[i].value,
+    });
+  }
+  for (let i = 0; i < oImgs.length; i++) {
+    const s = oImgs[i].position?.start?.offset;
+    const e = oImgs[i].position?.end?.offset;
+    if (s == null || e == null) return null;
+    const rewritten = rewriteImage(origMd.slice(s, e), oImgs[i], nImgs[i]);
+    if (rewritten == null) return null;
+    reps.push({ start: s, end: e, text: rewritten });
+  }
+  reps.sort((a, b) => b.start - a.start);
   let result = origMd.slice(oStart, oEnd);
-  for (let i = oLeaves.length - 1; i >= 0; i--) {
-    const relS = oLeaves[i].start - oStart;
-    const relE = oLeaves[i].end - oStart;
-    result = result.slice(0, relS) + nLeaves[i].value + result.slice(relE);
+  for (const r of reps) {
+    result =
+      result.slice(0, r.start - oStart) + r.text + result.slice(r.end - oStart);
   }
   return result;
 }
@@ -365,6 +657,7 @@ function mergeKids(
   parentStart: number,
   parentEnd: number,
   defaultSep: string,
+  adaptInsert?: (text: string, kid: Kid) => string,
 ): string | null {
   if (oKids.length === 0 || nKids.length === 0 || cKids.length === 0) return null;
 
@@ -419,7 +712,11 @@ function mergeKids(
         origIdx: origIdx,
       });
     } else {
-      pieces.push({ content: nKids[op.bi].text, origIdx: null });
+      const raw = nKids[op.bi].text;
+      pieces.push({
+        content: adaptInsert ? adaptInsert(raw, nKids[op.bi]) : raw,
+        origIdx: null,
+      });
     }
   }
   return stitchKids(origMd, oKids, parentStart, parentEnd, pieces, defaultSep);
@@ -452,14 +749,15 @@ function mergeListItem(
   if (!marker || !newMarker || nStart == null || nEnd == null) return null;
   const newBody = newMd.slice(nStart + newMarker.length, nEnd);
 
-  if (o.checked === n.checked && c && c.type === "listItem") {
+  let result: string | null = null;
+  if (c && c.type === "listItem") {
     const oKids = kidsOf(origMd, o);
     const cKids = kidsOf(canonMd, c);
     const nKids = kidsOf(newMd, n);
     const oStart = o.position?.start?.offset;
     const oEnd = o.position?.end?.offset;
     if (oKids && cKids && nKids && oStart != null && oEnd != null) {
-      const inner = mergeKids(
+      result = mergeKids(
         origMd,
         oKids,
         canonMd,
@@ -470,10 +768,10 @@ function mergeListItem(
         oEnd,
         "\n",
       );
-      if (inner != null) return inner;
     }
   }
-  return marker + newBody;
+  if (result == null) result = marker + newBody;
+  return applyCheckboxState(result, o, n);
 }
 
 function mergeNode(
@@ -495,7 +793,18 @@ function mergeNode(
     const oStart = o.position?.start?.offset;
     const oEnd = o.position?.end?.offset;
     if (!oKids || !cKids || !nKids || oStart == null || oEnd == null) return null;
-    return mergeKids(origMd, oKids, canonMd, cKids, newMd, nKids, oStart, oEnd, "\n");
+    return mergeKids(
+      origMd,
+      oKids,
+      canonMd,
+      cKids,
+      newMd,
+      nKids,
+      oStart,
+      oEnd,
+      "\n",
+      (text) => restyleInsertedListItem(text, oKids, origMd),
+    );
   }
 
   if (o.type === "listItem") {
@@ -510,6 +819,7 @@ function mergeNode(
     const oStart = o.position?.start?.offset;
     const oEnd = o.position?.end?.offset;
     if (!oKids || !cKids || !nKids || oStart == null || oEnd == null) return null;
+    const qprefix = quoteLinePrefix(origMd, o);
     return mergeKids(
       origMd,
       oKids,
@@ -520,7 +830,34 @@ function mergeNode(
       oStart,
       oEnd,
       "\n\n",
+      (text) => prefixQuoteLines(text, qprefix),
     );
+  }
+
+  if (o.type === "table") {
+    if (!c || c.type !== "table") return null;
+    return mergeTable(origMd, o, canonMd, c, newMd, n);
+  }
+
+  if (o.type === "tableRow") {
+    if (!c || c.type !== "tableRow") return null;
+    return mergeTableRow(origMd, o, canonMd, c, newMd, n);
+  }
+
+  if (o.type === "tableCell") {
+    return spliceTextLikes(origMd, o, newMd, n);
+  }
+
+  if (o.type === "code") {
+    if (!c || c.type !== "code") return null;
+    return mergeCode(origMd, o, canonMd, c, newMd, n);
+  }
+
+  if (o.type === "thematicBreak") {
+    const s = o.position?.start?.offset;
+    const e = o.position?.end?.offset;
+    if (s == null || e == null) return null;
+    return origMd.slice(s, e);
   }
 
   if (o.type === "paragraph" || o.type === "heading") {
@@ -557,6 +894,7 @@ export function mergeBlock(
       0,
       origText.length,
       "\n",
+      (t) => restyleInsertedListItem(t, oItems, origText),
     );
     if (merged != null) return merged;
   }
