@@ -110,9 +110,9 @@ Paste a YouTube or GitHub URL and get a rich card; the source stays a bare URL s
 
 ## Known Limitations
 
-- Opening a file never rewrites it. Saving is surgical: only the top-level blocks you actually edit are re-serialized. Untouched regions stay byte-identical (whitespace, `*` vs `_`, list tightness, setext headings, fence labels, …). The block you *did* edit is still normalized according to the serialization settings below.
-- A whole list, table, blockquote, or code fence is one top-level block — editing one list item rewrites that list (not the rest of the file).
-- Conversion of an edited block from rich text back to markdown is not a one-to-one exact map. You can control normalization of edited blocks via the settings icon in the rich editor mode.
+- Opening a file never rewrites it. Saving is surgical: only the text you actually change is spliced back. Untouched top-level blocks stay byte-identical (whitespace, `*` vs `_`, list tightness, setext headings, fence labels, …). Editing one list item keeps that list's original markers, indent, and the other items; only the edited item's words change.
+- A whole table or code fence is still one top-level block — editing a cell or fence rewrites that block. An edited item's own inline markers, or a paragraph whose mark tree changed (new bold, a link URL, …), still follow the serialization settings below.
+- Conversion of an edited region from rich text back to markdown is not a one-to-one exact map. You can control normalization of those rewritten spans via the settings icon in the rich editor mode.
 - Bold/italic adjacent to a word, when the run also contains a code span, can't be expressed in plain CommonMark (e.g. `**`bold`**Apples` parses as literal asterisks, not bold). The editor saves these as `**`bold`**<!---->Apples` — an empty HTML comment is the cleanest CommonMark-valid way to break the flanking run so the bold survives re-open. Adding a space (or any non-word char) avoids the separator entirely and is handled naturally.
 
 ---

@@ -1212,6 +1212,87 @@ async function run() {
     "insert lost original bytes or new text",
   );
 
+  const starList = [
+    "Intro *stars* stay.",
+    "",
+    "* alpha",
+    "* beta",
+    "* gamma",
+    "",
+    "Outro still here.",
+    "",
+  ].join("\n");
+  const starCanon = await roundTrip(starList);
+  const starIdentity = surgicalMerge(starList, starCanon, starCanon);
+  assert(
+    "unedited star list stays byte-identical despite dash bullet preference",
+    starIdentity === starList,
+    starIdentity === starList ? undefined : `diffed:\n${starIdentity}`,
+  );
+
+  const starEditedCanon = starCanon.replace("beta", "beta edited");
+  const starMerged = surgicalMerge(starList, starEditedCanon, starCanon);
+  assert(
+    "editing one * item keeps * markers and other items byte-identical",
+    starMerged.includes("* alpha\n* beta edited\n* gamma"),
+    `got:\n${starMerged}`,
+  );
+  assert(
+    "editing one * item does not rewrite surrounding blocks",
+    starMerged.includes("Intro *stars* stay.") && starMerged.includes("Outro still here."),
+    `surroundings rewritten:\n${starMerged}`,
+  );
+  assert(
+    "dash-preferring serialize does not flip * list markers on in-item edit",
+    !/^- /m.test(starMerged.split("Intro")[1] ?? starMerged),
+    `markers flipped:\n${starMerged}`,
+  );
+
+  const mixedLists = [
+    "* star one",
+    "* star two",
+    "",
+    "- dash one",
+    "- dash two",
+    "",
+  ].join("\n");
+  const mixedCanon = await roundTrip(mixedLists);
+  const mixedIdentity = surgicalMerge(mixedLists, mixedCanon, mixedCanon);
+  assert(
+    "unedited mixed */- lists stay byte-identical",
+    mixedIdentity === mixedLists,
+    mixedIdentity === mixedLists ? undefined : `diffed:\n${mixedIdentity}`,
+  );
+  const mixedEditedCanon = mixedCanon.replace("star two", "star two changed");
+  const mixedMerged = surgicalMerge(mixedLists, mixedEditedCanon, mixedCanon);
+  assert(
+    "editing a * item in a mixed */- file keeps both markers",
+    mixedMerged.includes("* star one") &&
+      mixedMerged.includes("* star two changed") &&
+      mixedMerged.includes("- dash one\n- dash two"),
+    `got:\n${mixedMerged}`,
+  );
+
+  const paraMarks = "A paragraph with *star emphasis* and __underscore bold__.\n";
+  const paraCanon = await roundTrip(paraMarks);
+  const paraEditedCanon = paraCanon.replace("paragraph", "sentence");
+  const paraMerged = surgicalMerge(paraMarks, paraEditedCanon, paraCanon);
+  assert(
+    "inline-only paragraph edit keeps original emphasis markers",
+    paraMerged.includes("A sentence with *star emphasis* and __underscore bold__."),
+    `got:\n${paraMerged}`,
+  );
+
+  const ordered = "6. six\n7. seven\n8. eight\n";
+  const orderedCanon = await roundTrip(ordered);
+  const orderedEditedCanon = orderedCanon.replace("seven", "seven edited");
+  const orderedMerged = surgicalMerge(ordered, orderedEditedCanon, orderedCanon);
+  assert(
+    "editing one ordered item keeps original numbers",
+    orderedMerged.includes("6. six\n7. seven edited\n8. eight"),
+    `got:\n${orderedMerged}`,
+  );
+
   // --------------------------------------------------------------------------
   // Print report
   // --------------------------------------------------------------------------
