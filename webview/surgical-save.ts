@@ -11,9 +11,14 @@
  * original slices; a dirty list item keeps its original marker and indent
  * and only replaces the edited body. New list items inherit the surrounding
  * marker. A dirty paragraph whose mark tree is unchanged splices new text
- * into the original bytes (so `*` / `_` / `__` stay put). Fences, thematic
- * breaks, heading style, and checkboxes keep their original markers unless
- * the user changed that meaning.
+ * into the original bytes (so `*` / `_` / `__` stay put). When the mark tree
+ * *does* change, phrasing is 3-way aligned (original / canon / new): unchanged
+ * runs keep original bytes, new emphasis wraps only the affected text with
+ * settings markers, and a link destination is spliced into the original
+ * `(url)` / `<url>` wrap. Tables align header cells so an added/removed
+ * column splices one cell per row and extends/trims the separator with the
+ * neighbor's `:---` style. Fences, thematic breaks, heading style, and
+ * checkboxes keep their original markers unless the user changed that meaning.
  *
  * `originalCanonical` is a full-document serialize of the same editor
  * snapshot that `original` came from (or of the file on open). Comparing
@@ -268,7 +273,8 @@ function textLeaves(
   return out;
 }
 
-/** Shape of phrasing/block marks, ignoring text values but keeping urls, code, depth.
+/** Shape of phrasing/block marks, ignoring text values and link/image dest.
+ *  Dest is omitted so a URL-only edit can splice into the original wrap.
  *  Image alt is omitted so an alt-only edit can still keep url wrapping / title quotes.
  */
 function shapeIgnoringText(node: any): string {
@@ -277,15 +283,31 @@ function shapeIgnoringText(node: any): string {
   let extra = "";
   if (node.type === "heading") extra = `:${node.depth}`;
   else if (node.type === "link" || node.type === "linkReference")
-    extra = `:${node.url ?? ""}:${node.title ?? ""}:${node.identifier ?? ""}`;
+    extra = `:${node.identifier ?? ""}`;
   else if (node.type === "image" || node.type === "imageReference")
-    extra = `:${node.url ?? ""}:${node.title ?? ""}:${node.identifier ?? ""}`;
+    extra = `:${node.identifier ?? ""}`;
   else if (node.type === "inlineCode" || node.type === "inlineMath")
     extra = `:${node.value ?? ""}`;
   else if (node.type === "listItem") extra = `:chk:${node.checked}`;
   else if (node.type === "list") extra = `:ord:${!!node.ordered}`;
   const kids = (node.children ?? []).map(shapeIgnoringText).join(",");
   return `${node.type}${extra}[${kids}]`;
+}
+
+function visibleOf(node: any): string {
+  if (!node) return "";
+  if (
+    node.type === "text" ||
+    node.type === "inlineCode" ||
+    node.type === "inlineMath"
+  ) {
+    return String(node.value ?? "");
+  }
+  if (node.type === "break") return "\n";
+  if (node.type === "image" || node.type === "imageReference") {
+    return String(node.alt ?? "");
+  }
+  return (node.children ?? []).map(visibleOf).join("");
 }
 
 function imagesOf(node: any): any[] {
@@ -300,6 +322,59 @@ function imagesOf(node: any): any[] {
   };
   walk(node);
   return out;
+}
+
+function linksOf(node: any): any[] {
+  const out: any[] = [];
+  const walk = (n: any) => {
+    if (!n) return;
+    if (n.type === "link") {
+      out.push(n);
+      return;
+    }
+    for (const ch of n.children ?? []) walk(ch);
+  };
+  walk(node);
+  return out;
+}
+
+/** Destination span inside raw `[text](dest)` / `<url>` so we splice only the URL. */
+function linkDestSpan(raw: string): {
+  start: number;
+  end: number;
+  angled: boolean;
+} | null {
+  const trimmed = raw.trim();
+  if (/^<[^\n>]+>$/.test(trimmed) && !raw.includes("](")) {
+    const open = raw.indexOf("<");
+    const close = raw.lastIndexOf(">");
+    if (open < 0 || close < 0) return null;
+    return { start: open + 1, end: close, angled: true };
+  }
+  const closeBracket = raw.lastIndexOf("]");
+  if (closeBracket < 0 || raw[closeBracket + 1] !== "(" || !raw.endsWith(")")) {
+    return null;
+  }
+  const dest = raw.slice(closeBracket + 2, raw.length - 1);
+  let i = 0;
+  while (i < dest.length && /\s/.test(dest[i])) i++;
+  const destAbs = closeBracket + 2;
+  if (dest[i] === "<") {
+    const end = dest.indexOf(">", i);
+    if (end < 0) return null;
+    return { start: destAbs + i, end: destAbs + end + 1, angled: true };
+  }
+  const start = i;
+  while (i < dest.length && !/\s/.test(dest[i])) i++;
+  return { start: destAbs + start, end: destAbs + i, angled: false };
+}
+
+function applyLinkDest(raw: string, o: any, n: any): string {
+  if ((o.url ?? "") === (n.url ?? "")) return raw;
+  const span = linkDestSpan(raw);
+  if (!span) return raw;
+  const urlPart = span.angled ? `<${n.url ?? ""}>` : (n.url ?? "");
+  return raw.slice(0, span.start) + urlPart + raw.slice(span.end);
 }
 
 /** Parse `![alt](dest)` so we can rebuild with original url wrapping / title quotes. */
@@ -414,6 +489,401 @@ function isTableSepLine(line: string): boolean {
   return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(line);
 }
 
+interface SrcChar {
+  ch: string;
+  srcStart: number;
+  srcEnd: number;
+  owner: Kid;
+  atomic: boolean;
+}
+
+function buildCharStream(md: string, kids: Kid[]): SrcChar[] {
+  const out: SrcChar[] = [];
+  const walk = (n: any, owner: Kid) => {
+    if (!n) return;
+    const t = n.type;
+    if (
+      t === "link" ||
+      t === "linkReference" ||
+      t === "image" ||
+      t === "imageReference" ||
+      t === "inlineCode" ||
+      t === "inlineMath" ||
+      t === "html"
+    ) {
+      const vis = visibleOf(n);
+      const start = n.position?.start?.offset;
+      const end = n.position?.end?.offset;
+      if (start == null || end == null) return;
+      if (vis.length === 0) return;
+      for (const ch of vis) {
+        out.push({ ch, srcStart: start, srcEnd: end, owner, atomic: true });
+      }
+      return;
+    }
+    if (t === "text") {
+      const start = n.position?.start?.offset;
+      const end = n.position?.end?.offset;
+      const value = String(n.value ?? "");
+      if (start == null || end == null) return;
+      const raw = md.slice(start, end);
+      if (raw === value) {
+        for (let i = 0; i < value.length; i++) {
+          out.push({
+            ch: value[i],
+            srcStart: start + i,
+            srcEnd: start + i + 1,
+            owner,
+            atomic: false,
+          });
+        }
+      } else {
+        for (let i = 0; i < value.length; i++) {
+          out.push({
+            ch: value[i],
+            srcStart: start,
+            srcEnd: end,
+            owner,
+            atomic: false,
+          });
+        }
+      }
+      return;
+    }
+    if (t === "break") {
+      const start = n.position?.start?.offset;
+      const end = n.position?.end?.offset;
+      if (start != null && end != null) {
+        out.push({ ch: "\n", srcStart: start, srcEnd: end, owner, atomic: true });
+      }
+      return;
+    }
+    for (const ch of n.children ?? []) walk(ch, owner);
+  };
+  for (const k of kids) walk(k.node, k);
+  return out;
+}
+
+function splitRewrap(
+  origMd: string,
+  oKids: Kid[],
+  stream: SrcChar[],
+  nKids: Kid[],
+): string | null {
+  let pos = 0;
+  let out = "";
+  let lastSrc = oKids[0].start;
+
+  for (const nk of nKids) {
+    const vis = visibleOf(nk.node);
+    if (nk.node.type === "break") {
+      const cur = stream[pos];
+      if (cur && cur.ch === "\n") {
+        if (lastSrc < cur.srcStart && /^\s*$/.test(origMd.slice(lastSrc, cur.srcStart))) {
+          out += origMd.slice(lastSrc, cur.srcStart);
+        }
+        out += origMd.slice(cur.srcStart, cur.srcEnd);
+        lastSrc = cur.srcEnd;
+        pos++;
+      } else {
+        out += nk.text;
+      }
+      continue;
+    }
+    if (vis.length === 0) {
+      out += nk.text;
+      continue;
+    }
+    const slice = stream.slice(pos, pos + vis.length);
+    if (slice.length !== vis.length) return null;
+    if (slice.map((c) => c.ch).join("") !== vis) return null;
+    pos += vis.length;
+
+    const owner = slice[0].owner;
+    const coversOwner =
+      slice.every((c) => c.owner === owner) && visibleOf(owner.node) === vis;
+    const srcFrom = slice[0].srcStart;
+    const srcTo = slice[slice.length - 1].srcEnd;
+
+    if (coversOwner && owner.node.type === nk.node.type) {
+      if (lastSrc < owner.start) {
+        const mid = origMd.slice(lastSrc, owner.start);
+        if (/^\s*$/.test(mid)) out += mid;
+      }
+      out +=
+        nk.node.type === "link"
+          ? applyLinkDest(owner.text, owner.node, nk.node)
+          : owner.text;
+      lastSrc = owner.end;
+      continue;
+    }
+
+    if (lastSrc < srcFrom) {
+      const mid = origMd.slice(lastSrc, srcFrom);
+      if (/^\s*$/.test(mid)) out += mid;
+    }
+
+    const inner = origMd.slice(srcFrom, srcTo);
+    if (nk.node.type === "text") {
+      out += inner;
+    } else if (visibleOf(nk.node) === inner) {
+      // New marks on unchanged text: use the serialize (settings markers).
+      out += nk.text;
+    } else {
+      out += nk.text;
+    }
+    lastSrc = srcTo;
+  }
+
+  if (pos !== stream.length) return null;
+  const oEnd = oKids[oKids.length - 1].end;
+  if (lastSrc < oEnd) {
+    const tail = origMd.slice(lastSrc, oEnd);
+    if (/^\s*$/.test(tail)) out += tail;
+  }
+  return out;
+}
+
+function mergePhraseGap(
+  origMd: string,
+  oKids: Kid[],
+  _newMd: string,
+  nKids: Kid[],
+): string | null {
+  if (oKids.length === 0) return nKids.map((k) => k.text).join("");
+  if (nKids.length === 0) return "";
+  const stream = buildCharStream(origMd, oKids);
+  const oVis = stream.map((c) => c.ch).join("");
+  const nVis = nKids.map((k) => visibleOf(k.node)).join("");
+  if (oVis === nVis) return splitRewrap(origMd, oKids, stream, nKids);
+
+  const ops = align(
+    oKids,
+    nKids,
+    (a, b) => visibleOf(a.node) === visibleOf(b.node),
+  );
+  let out = "";
+  for (const op of ops) {
+    if (op.kind === "equal") {
+      const oKid = oKids[op.ai];
+      const nKid = nKids[op.bi];
+      if (oKid.node.type === "link" && nKid.node.type === "link") {
+        out += applyLinkDest(oKid.text, oKid.node, nKid.node);
+      } else if (oKid.node.type === nKid.node.type) {
+        out += oKid.text;
+      } else {
+        out += nKid.text;
+      }
+    } else if (op.kind === "ins") {
+      out += nKids[op.bi].text;
+    }
+  }
+  return out;
+}
+
+function samePhrase(a: Kid, b: Kid): boolean {
+  if (a.node.type !== b.node.type) return false;
+  if (a.node.type === "link" || a.node.type === "linkReference") {
+    return visibleOf(a.node) === visibleOf(b.node);
+  }
+  return normalizeMd(a.text) === normalizeMd(b.text);
+}
+
+/** 3-way phrasing merge: unchanged runs keep original bytes; new marks wrap locally. */
+function mergePhrasing(
+  origMd: string,
+  o: any,
+  canonMd: string,
+  c: any,
+  newMd: string,
+  n: any,
+): string | null {
+  const spliced = spliceTextLikes(origMd, o, newMd, n);
+  if (spliced != null) return spliced;
+
+  if (!c || c.type !== o.type) {
+    c = o;
+    canonMd = origMd;
+  }
+
+  const oKids = kidsOf(origMd, o);
+  const cKids = kidsOf(canonMd, c);
+  const nKids = kidsOf(newMd, n);
+  const oStart = o.position?.start?.offset;
+  const oEnd = o.position?.end?.offset;
+  if (!oKids || !cKids || !nKids || oStart == null || oEnd == null) return null;
+  if (nKids.length === 0) {
+    return oKids.length === 0 ? origMd.slice(oStart, oEnd) : null;
+  }
+  if (oKids.length === 0 || cKids.length === 0) return null;
+
+  const canonToOrig =
+    oKids.length === cKids.length
+      ? cKids.map((_, i) => i)
+      : (() => {
+          const ops = align(
+            oKids,
+            cKids,
+            (a, b) =>
+              a.node.type === b.node.type &&
+              visibleOf(a.node) === visibleOf(b.node),
+          );
+          const map: Array<number | null> = Array(cKids.length).fill(null);
+          for (const op of ops) {
+            if (op.kind === "equal") map[op.bi] = op.ai;
+          }
+          return map;
+        })();
+
+  const ops = align(cKids, nKids, samePhrase);
+  const pieces: Array<{ content: string; origIdx: number | null }> = [];
+  let i = 0;
+  while (i < ops.length) {
+    const op = ops[i];
+    if (op.kind === "equal") {
+      const origIdx = canonToOrig[op.ai];
+      if (origIdx != null) {
+        const oKid = oKids[origIdx];
+        const nKid = nKids[op.bi];
+        pieces.push({
+          content:
+            oKid.node.type === "link" && nKid.node.type === "link"
+              ? applyLinkDest(oKid.text, oKid.node, nKid.node)
+              : oKid.text,
+          origIdx,
+        });
+      } else {
+        pieces.push({ content: nKids[op.bi].text, origIdx: null });
+      }
+      i++;
+      continue;
+    }
+    const delOrig: Kid[] = [];
+    const insNew: Kid[] = [];
+    while (i < ops.length && ops[i].kind !== "equal") {
+      if (ops[i].kind === "del") {
+        const origIdx = canonToOrig[(ops[i] as { ai: number }).ai];
+        if (origIdx != null) delOrig.push(oKids[origIdx]);
+      } else {
+        insNew.push(nKids[(ops[i] as { bi: number }).bi]);
+      }
+      i++;
+    }
+    if (insNew.length === 0) continue;
+    if (delOrig.length === 0) {
+      for (const k of insNew) pieces.push({ content: k.text, origIdx: null });
+      continue;
+    }
+    const gap = mergePhraseGap(origMd, delOrig, newMd, insNew);
+    if (gap == null) return null;
+    pieces.push({ content: gap, origIdx: oKids.indexOf(delOrig[0]) });
+  }
+  return stitchKids(origMd, oKids, oStart, oEnd, pieces, "");
+}
+
+function splitPipeRow(row: string): {
+  cells: string[];
+  leadPipe: boolean;
+  trailPipe: boolean;
+} {
+  const leadPipe = /^\s*\|/.test(row);
+  const trailPipe = /\|\s*$/.test(row);
+  let body = row;
+  if (leadPipe) body = body.replace(/^\s*\|/, "");
+  if (trailPipe) body = body.replace(/\|\s*$/, "");
+  return { cells: body.split("|"), leadPipe, trailPipe };
+}
+
+function joinPipeRow(parts: {
+  cells: string[];
+  leadPipe: boolean;
+  trailPipe: boolean;
+}): string {
+  return `${parts.leadPipe ? "|" : ""}${parts.cells.join("|")}${parts.trailPipe ? "|" : ""}`;
+}
+
+function makeSepCell(neighbor: string): string {
+  const t = neighbor.trim();
+  const dash = t.replace(/:/g, "") || "---";
+  const dashes = dash.length >= 3 ? dash : "---";
+  const left = t.startsWith(":");
+  const right = t.endsWith(":");
+  if (left && right) return `:${dashes}:`;
+  if (left) return `:${dashes}`;
+  if (right) return `${dashes}:`;
+  return dashes;
+}
+
+function cellToPipeInner(merged: string): string {
+  let s = merged;
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|")) s = s.slice(0, -1);
+  return s;
+}
+
+function rebuildSepLine(sepLine: string, colOps: AlignOp[]): string {
+  const parts = splitPipeRow(sepLine);
+  const cells: string[] = [];
+  for (const op of colOps) {
+    if (op.kind === "equal") {
+      cells.push(parts.cells[op.ai] ?? " --- ");
+    } else if (op.kind === "del") {
+      continue;
+    } else {
+      const neighbor = cells[cells.length - 1] ?? parts.cells[0] ?? ":---";
+      const pad = neighbor.match(/^(\s*)(.*?)(\s*)$/);
+      const style = makeSepCell(neighbor);
+      cells.push(`${pad?.[1] ?? ""}${style}${pad?.[3] ?? ""}`);
+    }
+  }
+  return joinPipeRow({ ...parts, cells });
+}
+
+function rebuildTableRow(
+  origMd: string,
+  oRow: any,
+  newMd: string,
+  nRow: any,
+  colOps: AlignOp[],
+): string | null {
+  const oStart = oRow.position?.start?.offset;
+  const oEnd = oRow.position?.end?.offset;
+  const nStart = nRow.position?.start?.offset;
+  const nEnd = nRow.position?.end?.offset;
+  if (oStart == null || oEnd == null || nStart == null || nEnd == null) return null;
+  const oParts = splitPipeRow(origMd.slice(oStart, oEnd));
+  const nParts = splitPipeRow(newMd.slice(nStart, nEnd));
+  const oKids = kidsOf(origMd, oRow);
+  const nKids = kidsOf(newMd, nRow);
+  if (!oKids || !nKids) return null;
+
+  const cells: string[] = [];
+  for (const op of colOps) {
+    if (op.kind === "equal") {
+      const oKid = oKids[op.ai];
+      const nKid = nKids[op.bi];
+      const origCell = oParts.cells[op.ai];
+      const newCell = nParts.cells[op.bi];
+      if (origCell == null || newCell == null || !oKid || !nKid) return null;
+      if (visibleOf(oKid.node) === visibleOf(nKid.node)) {
+        cells.push(origCell);
+      } else {
+        const merged =
+          mergePhrasing(origMd, oKid.node, origMd, oKid.node, newMd, nKid.node) ??
+          spliceTextLikes(origMd, oKid.node, newMd, nKid.node);
+        cells.push(merged != null ? cellToPipeInner(merged) : newCell);
+      }
+    } else if (op.kind === "del") {
+      continue;
+    } else {
+      const newCell = nParts.cells[op.bi];
+      if (newCell == null) return null;
+      cells.push(newCell);
+    }
+  }
+  return joinPipeRow({ ...oParts, cells });
+}
+
 function mergeTableRow(
   origMd: string,
   o: any,
@@ -474,6 +944,17 @@ function mergeTable(
   const sepLine = origText.split("\n").find(isTableSepLine);
   if (!sepLine) return null;
 
+  const oHeader = kidsOf(origMd, oKids[0].node);
+  const nHeader = kidsOf(newMd, nKids[0].node);
+  const colOps =
+    oHeader && nHeader && oHeader.length !== nHeader.length
+      ? align(
+          oHeader,
+          nHeader,
+          (a, b) => visibleOf(a.node) === visibleOf(b.node),
+        )
+      : null;
+
   const canonToOrig =
     oKids.length === cKids.length
       ? cKids.map((_, i) => i)
@@ -502,19 +983,39 @@ function mergeTable(
   for (const op of paired) {
     if (op.kind === "keep") {
       const origIdx = canonToOrig[op.ai];
-      rows.push(origIdx != null ? oKids[origIdx].text : nKids[op.bi].text);
+      if (colOps && origIdx != null) {
+        rows.push(
+          rebuildTableRow(
+            origMd,
+            oKids[origIdx].node,
+            newMd,
+            nKids[op.bi].node,
+            colOps,
+          ) ?? (origIdx != null ? oKids[origIdx].text : nKids[op.bi].text),
+        );
+      } else {
+        rows.push(origIdx != null ? oKids[origIdx].text : nKids[op.bi].text);
+      }
     } else if (op.kind === "merge") {
       const origIdx = canonToOrig[op.ai];
       let content: string | null = null;
       if (origIdx != null) {
-        content = mergeTableRow(
-          origMd,
-          oKids[origIdx].node,
-          canonMd,
-          cKids[op.ai].node,
-          newMd,
-          nKids[op.bi].node,
-        );
+        content = colOps
+          ? rebuildTableRow(
+              origMd,
+              oKids[origIdx].node,
+              newMd,
+              nKids[op.bi].node,
+              colOps,
+            )
+          : mergeTableRow(
+              origMd,
+              oKids[origIdx].node,
+              canonMd,
+              cKids[op.ai].node,
+              newMd,
+              nKids[op.bi].node,
+            );
       }
       rows.push(content ?? nKids[op.bi].text);
     } else {
@@ -522,7 +1023,8 @@ function mergeTable(
     }
   }
   if (rows.length === 0) return null;
-  return [rows[0], sepLine, ...rows.slice(1)].join("\n");
+  const outSep = colOps ? rebuildSepLine(sepLine, colOps) : sepLine;
+  return [rows[0], outSep, ...rows.slice(1)].join("\n");
 }
 
 function mergeCode(
@@ -572,7 +1074,12 @@ function spliceTextLikes(
   const oImgs = imagesOf(origNode);
   const nImgs = imagesOf(newNode);
   if (oImgs.length !== nImgs.length) return null;
-  if (oLeaves.length === 0 && oImgs.length === 0) return origMd.slice(oStart, oEnd);
+  const oLinks = linksOf(origNode);
+  const nLinks = linksOf(newNode);
+  if (oLinks.length !== nLinks.length) return null;
+  if (oLeaves.length === 0 && oImgs.length === 0 && oLinks.length === 0) {
+    return origMd.slice(oStart, oEnd);
+  }
   type Rep = { start: number; end: number; text: string };
   const reps: Rep[] = [];
   for (let i = 0; i < oLeaves.length; i++) {
@@ -589,6 +1096,16 @@ function spliceTextLikes(
     const rewritten = rewriteImage(origMd.slice(s, e), oImgs[i], nImgs[i]);
     if (rewritten == null) return null;
     reps.push({ start: s, end: e, text: rewritten });
+  }
+  for (let i = 0; i < oLinks.length; i++) {
+    const s = oLinks[i].position?.start?.offset;
+    const e = oLinks[i].position?.end?.offset;
+    if (s == null || e == null) return null;
+    if ((oLinks[i].url ?? "") === (nLinks[i].url ?? "")) continue;
+    const span = linkDestSpan(origMd.slice(s, e));
+    if (!span) return null;
+    const urlPart = span.angled ? `<${nLinks[i].url ?? ""}>` : (nLinks[i].url ?? "");
+    reps.push({ start: s + span.start, end: s + span.end, text: urlPart });
   }
   reps.sort((a, b) => b.start - a.start);
   let result = origMd.slice(oStart, oEnd);
@@ -628,6 +1145,8 @@ function stitchKids(
           oKids[prev.origIdx!].end,
           oKids[curr.origIdx!].start,
         );
+      } else if (defaultSep === "") {
+        // phrasing: pieces sit next to each other with no extra separator
       } else {
         if (!result.endsWith("\n")) result += defaultSep.startsWith("\n") ? "" : "\n";
         if (defaultSep === "\n\n") {
@@ -845,7 +1364,7 @@ function mergeNode(
   }
 
   if (o.type === "tableCell") {
-    return spliceTextLikes(origMd, o, newMd, n);
+    return mergePhrasing(origMd, o, canonMd, c, newMd, n);
   }
 
   if (o.type === "code") {
@@ -862,7 +1381,7 @@ function mergeNode(
 
   if (o.type === "paragraph" || o.type === "heading") {
     if (o.type === "heading" && o.depth !== n.depth) return null;
-    return spliceTextLikes(origMd, o, newMd, n);
+    return mergePhrasing(origMd, o, canonMd, c, newMd, n);
   }
 
   return null;

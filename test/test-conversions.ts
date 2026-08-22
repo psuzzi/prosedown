@@ -1445,6 +1445,94 @@ async function run() {
     `got:\n${JSON.stringify(brMerged)}`,
   );
 
+  const markSrc = "See _italic_ and <https://ex.com> plus **keep**.\n";
+  const markCanon = await roundTrip(markSrc);
+  const markBoldCanon = markCanon.replace(/^See /, "**See** ");
+  const markBoldMerged = surgicalMerge(markSrc, markBoldCanon, markCanon);
+  assert(
+    "new bold uses settings ** and does not normalize neighboring _ / <> / **",
+    markBoldMerged.includes("**See** _italic_ and <https://ex.com> plus **keep**."),
+    `got:\n${markBoldMerged}`,
+  );
+
+  const markItalCanon = markCanon.replace(/^See /, "_See_ ");
+  const markItalMerged = surgicalMerge(markSrc, markItalCanon, markCanon);
+  assert(
+    "new italic uses settings _ and leaves original * / ** / <> neighbors",
+    markItalMerged.includes("_See_ _italic_ and <https://ex.com> plus **keep**."),
+    `got:\n${markItalMerged}`,
+  );
+
+  const listMarkSrc = "* See _italic_ and <https://ex.com> please.\n* next\n";
+  const listMarkCanon = await roundTrip(listMarkSrc);
+  const listMarkEdited = listMarkCanon.replace("See ", "**See** ");
+  const listMarkMerged = surgicalMerge(listMarkSrc, listMarkEdited, listMarkCanon);
+  assert(
+    "new bold inside a * item keeps the marker and neighboring _ / <>",
+    listMarkMerged.includes("* **See** _italic_ and <https://ex.com> please.") &&
+      listMarkMerged.includes("* next"),
+    `got:\n${listMarkMerged}`,
+  );
+
+  const linkSrc = 'Click [here](<https://a.com> \'Hi\') please.\n';
+  const linkCanon = await roundTrip(linkSrc);
+  const linkEdited = linkCanon.replace("https://a.com", "https://b.com");
+  const linkMerged = surgicalMerge(linkSrc, linkEdited, linkCanon);
+  assert(
+    "changing a link URL splices only the destination and keeps <> wrap",
+    linkMerged.includes("Click [here](<https://b.com> 'Hi') please."),
+    `got:\n${linkMerged}`,
+  );
+
+  const autoSrc = "Go to <https://old.example> now.\n";
+  const autoCanon = await roundTrip(autoSrc);
+  const autoEdited = autoCanon.includes("https://old.example")
+    ? autoCanon.replace("https://old.example", "https://new.example")
+    : autoCanon;
+  const autoMerged = surgicalMerge(autoSrc, autoEdited, autoCanon);
+  assert(
+    "changing an autolink URL keeps <> wrapping",
+    autoMerged.includes("<https://new.example>"),
+    `got:\n${autoMerged}`,
+  );
+
+  const tableAddCanon = [
+    "| Left | Right | Mid | Extra |",
+    "| ---- | ----- | --- | ----- |",
+    "| a    | b     | c   | d     |",
+    "| x    | y     | z   | e     |",
+    "",
+  ].join("\n");
+  const tableAddMerged = surgicalMerge(tableSrc, tableAddCanon, tableCanon);
+  assert(
+    "adding a table column keeps :---- style and unedited cells",
+    tableAddMerged.includes("|:-----|------:|:---:|:---:|") &&
+      tableAddMerged.includes("| a    |    b  |  c  |") &&
+      tableAddMerged.includes("| x    |    y  |  z  |") &&
+      tableAddMerged.includes("Extra") &&
+      tableAddMerged.includes("d") &&
+      tableAddMerged.includes("e"),
+    `got:\n${tableAddMerged}`,
+  );
+
+  const tableRmCanon = [
+    "| Left | Mid |",
+    "| ---- | --- |",
+    "| a    | c   |",
+    "| x    | z   |",
+    "",
+  ].join("\n");
+  const tableRmMerged = surgicalMerge(tableSrc, tableRmCanon, tableCanon);
+  assert(
+    "removing a table column keeps remaining cells and :---- style",
+    tableRmMerged.includes("|:-----|:---:|") &&
+      tableRmMerged.includes("| a    |  c  |") &&
+      tableRmMerged.includes("| x    |  z  |") &&
+      !tableRmMerged.includes("Right") &&
+      !tableRmMerged.includes(" b"),
+    `got:\n${tableRmMerged}`,
+  );
+
   // --------------------------------------------------------------------------
   // Print report
   // --------------------------------------------------------------------------
