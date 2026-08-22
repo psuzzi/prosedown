@@ -40,6 +40,7 @@ const lowlight = createLowlight(common);
 
 export function App() {
   const handleUpdateRef = useRef<() => void>(() => {});
+  const refreshCanonRef = useRef<() => void>(() => {});
   const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -49,7 +50,7 @@ export function App() {
     setSettingsVisible,
     updateSettings,
     applySettings,
-  } = useSettingsPanel(handleUpdateRef);
+  } = useSettingsPanel(refreshCanonRef);
 
   const editor = useEditor({
     extensions: [
@@ -124,7 +125,7 @@ export function App() {
     switchToSource,
     openInBrowser,
     toggleDiff,
-  } = useEditorState({ editor, settingsRef, handleUpdateRef, applySettings });
+  } = useEditorState({ editor, settingsRef, handleUpdateRef, refreshCanonRef, applySettings });
 
   useClipboardHandlers(editor, baseUri, docFolderPath, settingsRef, uploadImage);
   const { dragOver } = useDragDrop(editor, uploadImage, editorContainerRef);

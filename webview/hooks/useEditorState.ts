@@ -8,6 +8,7 @@ import {
 } from "./useVSCodeSync";
 import { extractFrontmatter, prependFrontmatter } from "../frontmatter";
 import { mergeSettings, type ProsedownSettings } from "../settings";
+import { surgicalMerge } from "../surgical-save";
 import { vscodeApi, isBrowserMode } from "../vscode-api";
 
 // A window `focus` this soon after an in-editor pointerdown means the refocus
@@ -43,6 +44,7 @@ interface UseEditorStateOptions {
   editor: Editor | null;
   settingsRef: MutableRefObject<ProsedownSettings>;
   handleUpdateRef: MutableRefObject<() => void>;
+  refreshCanonRef: MutableRefObject<() => void>;
   applySettings: (s: ProsedownSettings) => void;
 }
 
@@ -50,6 +52,7 @@ export function useEditorState({
   editor,
   settingsRef,
   handleUpdateRef,
+  refreshCanonRef,
   applySettings,
 }: UseEditorStateOptions) {
   const initialized = useRef(false);
@@ -57,6 +60,12 @@ export function useEditorState({
   const docFolderPath = useRef("");
   const filePath = useRef("");
   const frontmatterRef = useRef("");
+  // Last-known markdown body (frontmatter stripped). Source of truth for
+  // surgical save — unedited top-level blocks are sliced from this string.
+  const originalBodyRef = useRef("");
+  // Full-document serialize of the editor snapshot that produced
+  // originalBodyRef. Compared to the next serialize to find dirty blocks.
+  const originalCanonRef = useRef<string | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isReadonly = useRef(false);
 
@@ -142,9 +151,22 @@ export function useEditorState({
           try {
             const { content: noFm, frontmatter } = extractFrontmatter(rawMd);
             frontmatterRef.current = frontmatter;
+            originalBodyRef.current = noFm;
+            originalCanonRef.current = null;
             setFrontmatter(frontmatter);
             const html = await markdownToHtml(noFm, baseUri.current);
-            editor.commands.setContent(html);
+            // Don't fire `update` on load — opening must not serialize or save.
+            editor.commands.setContent(html, { emitUpdate: false });
+            try {
+              originalCanonRef.current = await htmlToMarkdown(
+                html,
+                baseUri.current,
+                docFolderPath.current,
+                settingsRef.current,
+              );
+            } catch {
+              // First real edit will fall back to a full serialize.
+            }
             // Place the caret: restore the last-known position for this
             // file if we have one, otherwise drop it inside the first
             // heading (usually the title). Falls back to doc start.
@@ -177,6 +199,8 @@ export function useEditorState({
             msg.content,
           );
           frontmatterRef.current = frontmatter;
+          originalBodyRef.current = noFm;
+          originalCanonRef.current = null;
           setFrontmatter(frontmatter);
           const html = await markdownToHtml(noFm, baseUri.current);
           // setContent resets the ProseMirror selection to the doc end.
@@ -194,6 +218,16 @@ export function useEditorState({
           // host → dirty-after-save. The host just told us the content;
           // echoing it back as an edit is redundant.
           editor.commands.setContent(html, { emitUpdate: false });
+          try {
+            originalCanonRef.current = await htmlToMarkdown(
+              html,
+              baseUri.current,
+              docFolderPath.current,
+              settingsRef.current,
+            );
+          } catch {
+            originalCanonRef.current = null;
+          }
           const maxPos = editor.state.doc.content.size;
           editor.commands.setTextSelection({
             from: Math.min(from, maxPos),
@@ -207,6 +241,16 @@ export function useEditorState({
         setSearchVisible(true);
       } else if (msg.type === "settingsUpdated") {
         applySettings(mergeSettings(msg.settings));
+        try {
+          originalCanonRef.current = await htmlToMarkdown(
+            editor.getHTML(),
+            baseUri.current,
+            docFolderPath.current,
+            settingsRef.current,
+          );
+        } catch {
+          /* keep the previous baseline */
+        }
       } else if (msg.type === "gitDiffResponse") {
         if (typeof msg.headContent !== "string") {
           setStatus("Not tracked by git — nothing to diff against HEAD.");
@@ -304,13 +348,20 @@ export function useEditorState({
     debounceTimer.current = setTimeout(async () => {
       try {
         const html = editor.getHTML();
-        let markdown = await htmlToMarkdown(
+        let serialized = await htmlToMarkdown(
           html,
           baseUri.current,
           docFolderPath.current,
           settingsRef.current,
         );
-        markdown = prependFrontmatter(markdown, frontmatterRef.current);
+        const canon = originalCanonRef.current;
+        let body = serialized;
+        if (canon != null) {
+          body = surgicalMerge(originalBodyRef.current, serialized, canon);
+        }
+        originalBodyRef.current = body;
+        originalCanonRef.current = serialized;
+        const markdown = prependFrontmatter(body, frontmatterRef.current);
         vscodeApi.postMessage({ type: "edit", content: markdown });
         setStatus(null);
       } catch (err: any) {
@@ -328,6 +379,27 @@ export function useEditorState({
       editor.off("update", handleUpdate);
     };
   }, [editor, handleUpdate, handleUpdateRef]);
+
+  const refreshCanon = useCallback(() => {
+    if (!initialized.current || !editor) return;
+    void (async () => {
+      try {
+        const html = editor.getHTML();
+        originalCanonRef.current = await htmlToMarkdown(
+          html,
+          baseUri.current,
+          docFolderPath.current,
+          settingsRef.current,
+        );
+      } catch {
+        /* keep the previous baseline */
+      }
+    })();
+  }, [editor, settingsRef]);
+
+  useEffect(() => {
+    refreshCanonRef.current = refreshCanon;
+  }, [refreshCanon, refreshCanonRef]);
 
   // Edits from the frontmatter box: rebuild the fenced block, then reuse
   // the standard edit pipeline (handleUpdate serializes the doc and
@@ -395,13 +467,18 @@ export function useEditorState({
     if (!editor || !diffVisible) return "";
     try {
       const html = editor.getHTML();
-      const markdown = htmlToMarkdownSync(
+      const serialized = htmlToMarkdownSync(
         html,
         baseUri.current,
         docFolderPath.current,
         settingsRef.current,
       );
-      return prependFrontmatter(markdown, frontmatterRef.current);
+      const canon = originalCanonRef.current;
+      const body =
+        canon != null
+          ? surgicalMerge(originalBodyRef.current, serialized, canon)
+          : serialized;
+      return prependFrontmatter(body, frontmatterRef.current);
     } catch {
       return "";
     }

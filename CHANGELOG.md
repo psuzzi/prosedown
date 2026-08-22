@@ -2,6 +2,8 @@
 
 ## 1.0.x
 
+- Feature: **Surgical save** — opening a file no longer rewrites or auto-saves it. The original markdown stays the source of truth; on save, only top-level blocks whose canonical form changed are spliced back in, so previewing or editing one paragraph no longer dirties the rest of the file (`*` vs `_`, list tightness, setext underlines, fence labels, … stay put). `prosedown.autoSave` is a deprecated no-op (default `false`).
+
 - Fix: **Saving no longer rewrites content inside fenced code blocks.** A numbered list, bullet, table, task list, or escaped character shown *as an example* inside a ` ``` ` or `~~~` code block is now left byte-for-byte untouched on save — previously the save-time tidy-up would renumber `6.`/`6.` to `6.`/`7.`, unify bullets, pad example tables, and strip escapes, corrupting documentation you never edited. Under the hood the save-time normalization moved from text post-processing to **tree-based (mdast) transforms**, so a code block is structurally out of reach; the change also removed redundant renumber/bullet passes (remark-stringify does this natively) and makes every conversion a stable fixed point across repeated saves. ([#68](https://github.com/psuzzi/prosedown/issues/68), [#69](https://github.com/psuzzi/prosedown/issues/69))
 
 - Fix: **Ordered lists that don't start at `1.` are no longer renumbered to `1.`** on save. Opening and saving a file with a continued list (e.g. `6. 7. 8.`) rewrote it to `1. 2. 3.`, producing a spurious diff in content you never touched. The renumberer now seeds from the list's first item — so `1./1./1.` still normalises to `1./2./3.`, but a deliberate start is kept. ([#54](https://github.com/psuzzi/prosedown/issues/54))

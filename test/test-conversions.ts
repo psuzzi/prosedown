@@ -28,6 +28,7 @@ import { roundTrip, mdToHtml, htmlToMd } from "./pipeline";
 import { normalizeMarkdown, buildMarkdownConfig, buildMdPipeline } from "../webview/markdown.config";
 import { DEFAULT_SETTINGS, mergeSettings } from "../webview/settings";
 import { extractFrontmatter, prependFrontmatter } from "../webview/frontmatter";
+import { surgicalMerge, parseTopLevelBlocks } from "../webview/surgical-save";
 import {
   isYouTubeUrl,
   getYouTubeVideoId,
@@ -1099,6 +1100,116 @@ async function run() {
     "pipeline: bare fence inside a fence keeps no default lang label",
     codeFencePipeline("markdown", "```\nplain\n```", mergeSettings({ defaultCodeBlockLang: "text" })),
     "````markdown\n```\nplain\n```\n````\n"
+  );
+
+  // --------------------------------------------------------------------------
+  category("R. Surgical save");
+  // --------------------------------------------------------------------------
+
+  const messy = [
+    "Title",
+    "=====",
+    "",
+    "A paragraph with *star emphasis* and __underscore bold__.",
+    "",
+    "- loose",
+    "",
+    "- list",
+    "",
+    "Middle paragraph to edit.",
+    "",
+    "```shellscript",
+    "echo hi",
+    "```",
+    "",
+    "Trailing *stars* stay.",
+    "",
+  ].join("\n");
+
+  const messyCanon = await roundTrip(messy);
+  const noEdit = surgicalMerge(messy, messyCanon, messyCanon);
+  assert(
+    "open/roundtrip without user edits leaves messy markdown byte-identical",
+    noEdit === messy,
+    noEdit === messy ? undefined : `diffed:\n${noEdit}`,
+  );
+
+  const origBlocks = parseTopLevelBlocks(messy);
+  const canonBlocks = parseTopLevelBlocks(messyCanon);
+  assert(
+    "messy fixture has several top-level blocks",
+    origBlocks.length >= 5,
+    `only ${origBlocks.length} blocks`,
+  );
+
+  const middleIdx = canonBlocks.findIndex((b) =>
+    b.text.includes("Middle paragraph to edit."),
+  );
+  assert(
+    "canonical dump still contains the middle paragraph",
+    middleIdx >= 0,
+    "middle paragraph missing from canonical serialize",
+  );
+
+  let editedCanon = messyCanon;
+  if (middleIdx >= 0) {
+    const b = canonBlocks[middleIdx];
+    editedCanon =
+      messyCanon.slice(0, b.start) +
+      "Edited middle paragraph." +
+      messyCanon.slice(b.end);
+  }
+  const oneBlock = surgicalMerge(messy, editedCanon, messyCanon);
+
+  assert(
+    "editing one block leaves setext heading byte-identical",
+    oneBlock.includes("Title\n====="),
+    "setext heading was rewritten",
+  );
+  assert(
+    "editing one block leaves *emphasis* / __bold__ byte-identical",
+    oneBlock.includes("*star emphasis*") && oneBlock.includes("__underscore bold__"),
+    "inline markers were normalized",
+  );
+  assert(
+    "editing one block leaves loose-list blank line byte-identical",
+    oneBlock.includes("- loose\n\n- list"),
+    "list tightness was normalized",
+  );
+  assert(
+    "editing one block leaves ```shellscript fence byte-identical",
+    oneBlock.includes("```shellscript"),
+    "fence label was rewritten",
+  );
+  assert(
+    "editing one block leaves the trailing paragraph byte-identical",
+    oneBlock.includes("Trailing *stars* stay."),
+    "trailing paragraph was rewritten",
+  );
+  assert(
+    "edited block is present in the output",
+    oneBlock.includes("Edited middle paragraph."),
+    "new text missing",
+  );
+  assert(
+    "unedited regions are exact slices of the original file",
+    oneBlock.includes(messy.slice(0, messy.indexOf("Middle paragraph to edit."))),
+    "prefix of file was not a byte-identical slice",
+  );
+
+  // Insert a block between two kept originals
+  const insertedCanon =
+    messyCanon.replace(
+      "Middle paragraph to edit.",
+      "Middle paragraph to edit.\n\nBrand new paragraph.",
+    );
+  const inserted = surgicalMerge(messy, insertedCanon, messyCanon);
+  assert(
+    "inserting a block keeps surrounding original bytes",
+    inserted.includes("*star emphasis*") &&
+      inserted.includes("```shellscript") &&
+      inserted.includes("Brand new paragraph."),
+    "insert lost original bytes or new text",
   );
 
   // --------------------------------------------------------------------------

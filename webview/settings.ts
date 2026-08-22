@@ -55,10 +55,9 @@ export interface ProsedownSettings {
 
   // --- saving ---
   /**
-   * Save the file silently on open to persist the normalization round-trip
-   * (md → html → md) that the rich editor applies. Only fires once per
-   * open; subsequent edits follow VS Code's own `files.autoSave` /
-   * manual-save behavior so we don't fight the user's configured cadence.
+   * Deprecated no-op. Opening a file no longer rewrites or auto-saves it;
+   * only user edits are written, and only the top-level blocks they
+   * changed. Kept so existing `prosedown.autoSave` values still parse.
    */
   autoSave: boolean;
 
@@ -91,7 +90,7 @@ export const DEFAULT_SETTINGS: ProsedownSettings = {
   defaultCodeBlockLang: "",
   diffLayout: "side-by-side",
   diffMode: "rendered",
-  autoSave: true,
+  autoSave: false,
   bubbleMenuShortcut: "Mod+/",
 };
 

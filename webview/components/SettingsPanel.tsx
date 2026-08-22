@@ -38,13 +38,11 @@ export function SettingsPanel({
         <div className="settings-body">
           <section>
             <h3>Saving</h3>
-
-            <Toggle
-              label="Save normalization on open (Recommended)"
-              description="Rich editor requires a stable round-trip, so opening a file always re-emits its markdown according to the normalization settings below. This setting turns on the auto-save feature for the first time Prosedown looks at a markdown file."
-              checked={settings.autoSave}
-              onChange={(v) => set("autoSave", v)}
-            />
+            <p className="settings-note">
+              Opening a file never rewrites it. Only top-level blocks you
+              edit are serialized; everything else stays byte-identical.
+              Disk writes follow VS Code&apos;s own auto-save / Cmd+S.
+            </p>
           </section>
 
           <section>

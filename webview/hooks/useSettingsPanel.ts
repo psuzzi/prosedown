@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, type ProsedownSettings } from "../settings";
 import { vscodeApi } from "../vscode-api";
 
 export function useSettingsPanel(
-  handleUpdateRef: MutableRefObject<() => void>,
+  refreshCanonRef: MutableRefObject<() => void>,
 ) {
   const settingsRef = useRef<ProsedownSettings>(DEFAULT_SETTINGS);
   const [settings, setSettings] =
@@ -16,9 +16,12 @@ export function useSettingsPanel(
       settingsRef.current = next;
       setSettings(next);
       vscodeApi.postMessage({ type: "saveSettings", settings: next });
-      handleUpdateRef.current();
+      // Rebuild the surgical-save baseline under the new markers so the
+      // next edit only rewrites blocks the user actually touches — not
+      // every list/emphasis that would restyle under the new settings.
+      refreshCanonRef.current();
     },
-    [handleUpdateRef],
+    [refreshCanonRef],
   );
 
   /** Apply settings from an external source (e.g. init message) without
