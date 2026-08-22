@@ -81,6 +81,16 @@ export class ProsedownProvider implements vscode.CustomTextEditorProvider {
     this.activeWebview?.postMessage({ type: "openSearch" });
   }
 
+  openSettings() {
+    if (this.activeWebview) {
+      this.activeWebview.postMessage({ type: "openSettings" });
+      return;
+    }
+    void vscode.window.showInformationMessage(
+      "Open a markdown file in the rich editor to access Prosedown settings.",
+    );
+  }
+
   private loadCursor(filePath: string): number | undefined {
     const all =
       this.context.globalState.get<Record<string, number>>(CURSORS_KEY, {}) ??

@@ -147,6 +147,7 @@ Every action is in the command palette under the `Prosedown:` prefix.
 | Find in Document               | Cmd/Ctrl+F (inside the rich editor)           | Open the in-editor search bar for the current rich-editor pane.                                                                                                   |
 | Open Rich Diff                 | Right-click an SCM entry, or the diff toolbar | Open a side-by-side or rendered markdown diff of the selected file vs HEAD (or any two URIs). AI-proposed edits open this automatically.                          |
 | Open in Browser                | —                                             | Spin up a local server and open the file in your default browser as the same rich editor — drag-and-drop images, leave it open as a tab, edits sync back to disk. |
+| Open Settings                  | —                                             | Open the in-editor settings panel. Does not reset anything.                                                                                                       |
 | Factory Reset Settings         | —                                             | Wipe all Prosedown settings back to defaults and re-show the welcome modal on the next file open. Confirms before applying.                                       |
 
 ### Keyboard shortcuts

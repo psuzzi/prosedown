@@ -2,7 +2,7 @@
   "name": "prosedown",
   "displayName": "Prosedown",
   "description": "Rich, block-based WYSIWYG markdown editing in VS Code — tables, math, Mermaid, and rich diffs.",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "publisher": "psuzzi",
   "license": "MIT",
   "repository": {
@@ -108,6 +108,11 @@
         "title": "Open in Browser",
         "category": "Prosedown",
         "icon": "$(globe)"
+      },
+      {
+        "command": "prosedown.openSettings",
+        "title": "Open Settings",
+        "category": "Prosedown"
       },
       {
         "command": "prosedown.factoryReset",

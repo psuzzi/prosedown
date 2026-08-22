@@ -157,6 +157,12 @@ export function activate(context: vscode.ExtensionContext) {
   // settings revert to defaults and the welcome modal fires again on
   // the next file open. Confirms before applying.
   context.subscriptions.push(
+    vscode.commands.registerCommand("prosedown.openSettings", () => {
+      provider.openSettings();
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("prosedown.factoryReset", () => {
       void provider.factoryReset();
     })
