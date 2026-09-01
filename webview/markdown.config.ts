@@ -5,6 +5,13 @@
  * See remark-stringify options:
  * https://github.com/remarkjs/remark/tree/main/packages/remark-stringify#options
  */
+import { unified } from "unified";
+import { visit } from "unist-util-visit";
+import type { Root } from "mdast";
+import rehypeParse from "rehype-parse";
+import rehypeRemark from "rehype-remark";
+import remarkGfm from "remark-gfm";
+import remarkStringify from "remark-stringify";
 import { DEFAULT_SETTINGS, type ProsedownSettings } from "./settings";
 
 /**
@@ -23,11 +30,150 @@ export function buildMarkdownConfig(settings: ProsedownSettings = DEFAULT_SETTIN
     fence: "`" as const,
     fences: true,
     rule: settings.rule,
+    // Ordered-list numbering is the serializer's job: true re-sequences from the
+    // list's start (1,2,3…); false keeps each item's own number. This replaces
+    // the old text pass `renumberOrderedLists` (slice 2 of #78), so it can never
+    // touch a numbered list shown inside a fenced code block.
+    incrementListMarker: settings.renumberOrderedLists,
   };
 }
 
 /** Back-compat export for the default config. */
 export const MARKDOWN_CONFIG = buildMarkdownConfig(DEFAULT_SETTINGS);
+
+/**
+ * The shared HTML → markdown pipeline:
+ * rehype-parse → rehype-remark → remark-gfm → remark-stringify.
+ *
+ * Defined once and used by both the save path and the clipboard path in
+ * `useVSCodeSync.ts` and by the test mirror in `test/pipeline.ts`, so the three
+ * cannot drift. This is also the seam that future mdast transforms plug into
+ * (added with `.use(...)` before `remark-stringify`, where the tree is still
+ * live). Callers pick `.process()` (async) or `.processSync()`.
+ */
+export function buildMdPipeline(settings: ProsedownSettings = DEFAULT_SETTINGS) {
+  return unified()
+    .use(rehypeParse, { fragment: true })
+    .use(rehypeRemark)
+    .use(remarkGfm)
+    .use(codeInfoTransform, settings)
+    .use(orderedListGuard)
+    .use(listCompactTransform, settings)
+    .use(imageDedupTransform, settings)
+    .use(remarkStringify, buildMarkdownConfig(settings));
+}
+
+/**
+ * Guard against an illegal ordered-list marker. CommonMark caps ordered markers
+ * at 9 digits; remark-stringify increments from `list.start`, so a list starting
+ * near the cap would emit a 10-digit marker (e.g. 999999999 → 1000000000). That
+ * is no longer a list item and would break on the next parse, so reset such a
+ * list to start at 1. Replaces the clamp the old text `renumberOrderedLists`
+ * carried (#54); operates on the tree, so it never sees fenced code.
+ */
+function orderedListGuard() {
+  return (tree: Root) => {
+    visit(tree, "list", (node) => {
+      if (!node.ordered) return;
+      const start = node.start ?? 1;
+      if (start + Math.max(0, node.children.length - 1) > 999_999_999) {
+        node.start = 1;
+      }
+    });
+  };
+}
+
+/**
+ * Normalize fenced-code **info strings** on the mdast (a `code` node's `lang`),
+ * before serialization. This is the tree-based replacement for the old text
+ * passes `shellscriptToBash` and `applyDefaultCodeBlockLang` — and because it
+ * walks `code` nodes, it can only ever touch a real fence, never a fence shown
+ * *inside* another fence (whose body is the opaque `code.value`).
+ *
+ * - `shellscript` → `bash` (when the setting is on).
+ * - a bare fence gets the user's `defaultCodeBlockLang`, if any.
+ * - with no default set, a `text`/`plaintext` label is stripped (never a real
+ *   language) — mirrors the old behaviour exactly.
+ */
+function codeInfoTransform(settings: ProsedownSettings) {
+  return (tree: Root) => {
+    const dflt = settings.defaultCodeBlockLang;
+    visit(tree, "code", (node) => {
+      if (settings.shellscriptToBash && node.lang === "shellscript") {
+        node.lang = "bash";
+      }
+      if (!node.lang && dflt) {
+        node.lang = dflt;
+      } else if (
+        node.lang &&
+        !dflt &&
+        (node.lang === "text" || node.lang === "plaintext")
+      ) {
+        node.lang = null;
+      }
+    });
+  };
+}
+
+/**
+ * Tight lists. remark-stringify keeps a list "loose" (blank lines between items)
+ * when the mdast marks it spread; the old text pass `compactLists` stripped those
+ * blanks. On the tree that is clearing the LIST's `spread` flag — and it can
+ * never reach a list shown inside a fenced code block. An item's own spread is
+ * left alone, so a blank line between an item and its indented child block is
+ * preserved (matching the old pass).
+ */
+function listCompactTransform(settings: ProsedownSettings) {
+  return (tree: Root) => {
+    if (!settings.compactLists) return;
+    visit(tree, "list", (node) => {
+      node.spread = false;
+      for (const item of node.children) {
+        // Tighten only the canonical nested-list item: a leading paragraph
+        // immediately followed by a sublist (parent → sublist has no blank line).
+        // Any other shape — a trailing paragraph after the sublist, or two
+        // paragraphs — is left loose, so its blank lines are preserved and the
+        // result stays a fixed point across saves (matches the old text pass).
+        if (item.children.length === 2 && item.children[1].type === "list") {
+          item.spread = false;
+        }
+      }
+    });
+  };
+}
+
+/**
+ * Remove a paragraph that only repeats the preceding image's alt text. The editor
+ * can emit an image and then a caption paragraph with the same text; an editor
+ * should never persist duplicate content. Tree form of the old `dedupImageAltText`
+ * pass — it works on sibling nodes, so it can never touch a fenced code block.
+ */
+function imageDedupTransform(settings: ProsedownSettings) {
+  return (tree: Root) => {
+    if (!settings.dedupImageAltText) return;
+    visit(tree, "paragraph", (node, index, parent) => {
+      if (!parent || index == null) return;
+      const only = node.children.length === 1 ? node.children[0] : undefined;
+      if (!only || only.type !== "image" || !only.alt) return;
+      // Drop EVERY consecutive paragraph that only repeats this image's alt, so a
+      // run of duplicates collapses in a single pass (stays a fixed point).
+      for (;;) {
+        const next = parent.children[index + 1];
+        if (
+          next &&
+          next.type === "paragraph" &&
+          next.children.length === 1 &&
+          next.children[0].type === "text" &&
+          next.children[0].value === only.alt
+        ) {
+          parent.children.splice(index + 1, 1);
+        } else {
+          break;
+        }
+      }
+    });
+  };
+}
 
 /**
  * Post-process markdown to fix formatting issues
@@ -40,24 +186,12 @@ export function normalizeMarkdown(
   md: string,
   settings: ProsedownSettings = DEFAULT_SETTINGS
 ): string {
-  if (settings.shellscriptToBash) {
-    md = md.replace(/^```shellscript$/gm, "```bash");
-  }
-  // Replace non-preferred bullet markers with the preferred one
-  // (remark config handles this but bulletOther may still produce the other)
-  const others = (["-", "*", "+"] as const).filter((b) => b !== settings.bullet);
-  // Use a non-character-class alternation to sidestep regex-escape pitfalls
-  const otherBulletsPattern = others.map((b) => (b === "*" ? "\\*" : b === "+" ? "\\+" : "-")).join("|");
-  md = md.replace(
-    new RegExp(`^(\\s*)(?:${otherBulletsPattern})\\s{1,3}`, "gm"),
-    `$1${settings.bullet} `
-  );
-  // Normalize ordered list spacing: "1.  " → "1. "
-  md = md.replace(/^(\s*\d+\.)\s{2,}/gm, "$1 ");
+  // Bullet marker, ordered-list spacing, and ordered-list renumbering are all
+  // handled natively by remark-stringify now (the `bullet` and
+  // `incrementListMarker` options + `orderedListGuard`), inside buildMdPipeline
+  // and before serialization — so they can never rewrite a list shown inside a
+  // fenced code block (slice 2 of #78).
   md = fixTaskLists(md);
-  if (settings.renumberOrderedLists) {
-    md = renumberOrderedLists(md);
-  }
   if (settings.unescapeSpecialChars) {
     md = unescapeSpecialChars(md);
   }
@@ -65,42 +199,15 @@ export function normalizeMarkdown(
     md = fixTableHeaders(md);
   }
   md = padTables(md);
-  if (settings.dedupImageAltText) {
-    md = md.replace(/(!\[([^\]]+)\]\([^)]+\))\n+\2\s*$/gm, "$1\n");
-  }
+  // Duplicate image-caption removal now handled on the tree (imageDedupTransform
+  // in buildMdPipeline, slice 3b of #78) — never touches content inside a fence.
   md = stripAutolinks(md);
   md = unescapeBareUrls(md);
   md = replaceSafetyEntities(md);
   md = fixOrphanedListMarkers(md);
-  if (settings.compactLists) {
-    md = compactLists(md);
-  }
-  // Apply / strip default code block language label.
-  md = applyDefaultCodeBlockLang(md, settings.defaultCodeBlockLang);
+  // List tightness now handled on the tree (listCompactTransform in
+  // buildMdPipeline, slice 3 of #78) — never touches a list shown in a fence.
   return md;
-}
-
-/**
- * When the user picks a defaultCodeBlockLang, give bare ``` fences that
- * label. When it's empty, strip labels that look like our default ("text",
- * "plaintext") — never strip real languages.
- */
-function applyDefaultCodeBlockLang(md: string, lang: string): string {
-  const lines = md.split("\n");
-  let fenceCount = 0; // 0 = outside, odd = just opened, even = closed
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(\s*)```([^\s`]*)\s*$/);
-    if (!m) continue;
-    fenceCount++;
-    if (fenceCount % 2 === 0) continue; // closing fence
-    const [, indent, existing] = m;
-    if (!existing && lang) {
-      lines[i] = `${indent}\`\`\`${lang}`;
-    } else if (existing && !lang && (existing === "text" || existing === "plaintext")) {
-      lines[i] = `${indent}\`\`\``;
-    }
-  }
-  return lines.join("\n");
 }
 
 /**
@@ -230,45 +337,6 @@ function fixTaskLists(md: string): string {
     final.push(result[k]);
   }
   return final.join("\n");
-}
-
-/**
- * Renumber consecutive ordered list items.
- * BlockNote outputs each item as "1." — this fixes them to 1. 2. 3. etc.
- */
-function renumberOrderedLists(md: string): string {
-  const lines = md.split("\n");
-  const result: string[] = [];
-  let counter = 0;
-  let inList = false;
-  let blankLineGap = false;
-
-  for (const line of lines) {
-    const match = line.match(/^(\s*)(\d+)\.\s(.*)$/);
-    if (match && match[1] === "") {
-      // Seed from the list's first item so a deliberate start (e.g. a
-      // continued "6.") is kept; only re-sequence the items after it (#54).
-      counter = inList ? counter + 1 : parseInt(match[2], 10);
-      // CommonMark caps ordered-list markers at 9 digits; a marker past that
-      // isn't a list item, so the row would merge into the one above on the
-      // next save. Fall back to 1 rather than emit an illegal 10-digit marker.
-      if (counter > 999_999_999) counter = 1;
-      inList = true;
-      blankLineGap = false;
-      result.push(`${counter}. ${match[3]}`);
-    } else if (line.trim() === "" && inList) {
-      blankLineGap = true;
-      result.push(line);
-    } else {
-      if (line.trim() !== "" && !line.match(/^\s*\d+\.\s/)) {
-        inList = false;
-        counter = 0;
-        blankLineGap = false;
-      }
-      result.push(line);
-    }
-  }
-  return result.join("\n");
 }
 
 /**
@@ -586,64 +654,6 @@ function fixOrphanedListMarkers(md: string): string {
     }
     result.push(lines[i]);
     i++;
-  }
-  return result.join("\n");
-}
-
-/**
- * Remove blank lines between consecutive list items to produce tight lists.
- * Preserves blank lines around non-list content.
- */
-function compactLists(md: string): string {
-  const LIST_ITEM = /^(\s*)(?:[-*]|\d+\.)\s/;
-  const ORDERED = /^(\s*)\d+\.\s/;
-  const UNORDERED = /^(\s*)[-*]\s/;
-  const lines = md.split("\n");
-  const result: string[] = [];
-  let inCodeBlock = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    if (/^```/.test(lines[i])) inCodeBlock = !inCodeBlock;
-    if (inCodeBlock) {
-      result.push(lines[i]);
-      continue;
-    }
-
-    if (lines[i].trim() === "") {
-      let prevLine = "";
-      for (let p = result.length - 1; p >= 0; p--) {
-        if (result[p].trim() !== "") {
-          prevLine = result[p];
-          break;
-        }
-      }
-      let nextLine = "";
-      for (let n = i + 1; n < lines.length; n++) {
-        if (lines[n].trim() !== "") {
-          nextLine = lines[n];
-          break;
-        }
-      }
-
-      const prevIsList = LIST_ITEM.test(prevLine);
-      const nextIsList = LIST_ITEM.test(nextLine);
-
-      if (prevIsList && nextIsList) {
-        // Keep blank line between different list types at top level
-        const prevIndent = prevLine.match(/^(\s*)/)?.[1]?.length ?? 0;
-        const nextIndent = nextLine.match(/^(\s*)/)?.[1]?.length ?? 0;
-        const sameType =
-          (ORDERED.test(prevLine) && ORDERED.test(nextLine)) ||
-          (UNORDERED.test(prevLine) && UNORDERED.test(nextLine));
-        if (prevIndent === 0 && nextIndent === 0 && !sameType) {
-          result.push(lines[i]); // keep the blank line
-        }
-        // else: skip (compact)
-        continue;
-      }
-    }
-
-    result.push(lines[i]);
   }
   return result.join("\n");
 }

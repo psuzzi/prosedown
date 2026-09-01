@@ -25,7 +25,7 @@
  */
 
 import { roundTrip, mdToHtml, htmlToMd } from "./pipeline";
-import { normalizeMarkdown, buildMarkdownConfig } from "../webview/markdown.config";
+import { normalizeMarkdown, buildMarkdownConfig, buildMdPipeline } from "../webview/markdown.config";
 import { DEFAULT_SETTINGS, mergeSettings } from "../webview/settings";
 import { extractFrontmatter, prependFrontmatter } from "../webview/frontmatter";
 import {
@@ -110,6 +110,51 @@ function assert(name: string, condition: boolean, detail?: string, opts: { known
     expected: "OK",
     known: opts.known,
   });
+}
+
+/**
+ * Fenced-code info-string normalization (shellscript→bash, defaultCodeBlockLang)
+ * moved out of `normalizeMarkdown` into a `code`-node transform inside
+ * `buildMdPipeline` (slice 1 of #78). Exercise it through the real pipeline from
+ * an HTML code-block fixture, the same way rehype-remark feeds the save path.
+ */
+function codeFencePipeline(
+  lang: string,
+  body: string,
+  settings = DEFAULT_SETTINGS
+): string {
+  const cls = lang ? ` class="language-${lang}"` : "";
+  return String(buildMdPipeline(settings).processSync(`<pre><code${cls}>${body}</code></pre>`));
+}
+
+/**
+ * Ordered/unordered-list numbering and bullet markers moved out of
+ * `normalizeMarkdown` into remark-stringify options + `orderedListGuard` inside
+ * `buildMdPipeline` (slice 2 of #78). Exercise them through the real html→md
+ * path from a list HTML fixture (as rehype-remark feeds the save path).
+ */
+function olThroughPipeline(items: string[], settings = DEFAULT_SETTINGS, start?: number): string {
+  const s = start != null ? ` start="${start}"` : "";
+  const html = `<ol${s}>` + items.map((t) => `<li>${t}</li>`).join("") + `</ol>`;
+  return String(buildMdPipeline(settings).processSync(html));
+}
+function ulThroughPipeline(items: string[], settings = DEFAULT_SETTINGS): string {
+  const html = `<ul>` + items.map((t) => `<li>${t}</li>`).join("") + `</ul>`;
+  return String(buildMdPipeline(settings).processSync(html));
+}
+/**
+ * Run markdown through the full round-trip pipeline (md → html → md via
+ * buildMdPipeline). Used to test list tightness (slice 3 of #78), which now lives
+ * in a tree transform, so tests exercise observable output — not the old text
+ * helper — and honour the settings.
+ */
+async function listMd(md: string, settings = DEFAULT_SETTINGS): Promise<string> {
+  return String(await buildMdPipeline(settings).process(await mdToHtml(md)));
+}
+/** Run an HTML fixture through the html→md pipeline (as rehype-remark feeds the
+ * save path). Used to test transforms whose input is editor HTML. */
+function htmlMd(html: string, settings = DEFAULT_SETTINGS): string {
+  return String(buildMdPipeline(settings).processSync(html));
 }
 
 // ============================================================================
@@ -203,11 +248,13 @@ async function run() {
   );
   await roundtripCase("ordered simple", "1. First\n2. Second\n3. Third");
   await roundtripCase("ordered list starting at 5 (#54)", "5. First\n6. Second\n7. Third");
-  // >9-digit start is clamped and stays a fixed point across saves (#54/#70).
+  // >9-digit start would emit an illegal 10-digit marker, so orderedListGuard
+  // resets the list to start at 1; result stays a fixed point across saves
+  // (#54/#70). (Was "999999999. a\n1. b\n" under the old text clamp.)
   await roundtripCase(
     "ordered list >9-digit start clamped, idempotent (#54/#70)",
     "999999999. a\n999999999. b\n",
-    "999999999. a\n1. b\n"
+    "1. a\n2. b\n"
   );
   // KNOWN BUG (filed): a loose nested ordered list with a non-1 start survives
   // one save, then collapses on the second — remark-stringify tightens the
@@ -228,6 +275,13 @@ async function run() {
   await roundtripCase(
     "mixed ul+ol",
     "- Unordered\n  1. Ordered child\n  2. Another ordered\n- Back to unordered"
+  );
+  // A list item with a paragraph AFTER its sublist must stay loose — tightening
+  // it collapses the trailing blank and drifts on the next save. Regression for
+  // the compactLists tree transform (#78 slice 3a).
+  await roundtripCase(
+    "list item with a paragraph after its sublist stays loose + idempotent",
+    "- item text\n\n  - nested one\n  - nested two\n\n  trailing para\n"
   );
   await roundtripCase(
     "list with inline link",
@@ -299,10 +353,10 @@ async function run() {
     "```\nplain code\nno language\n```"
   );
 
-  // shellscript → bash normalization
+  // shellscript → bash normalization (code-node transform, slice 1 of #78)
   eq(
-    "normalizeMarkdown: shellscript → bash",
-    normalizeMarkdown("```shellscript\necho hi\n```\n"),
+    "pipeline: shellscript → bash",
+    codeFencePipeline("shellscript", "echo hi"),
     "```bash\necho hi\n```\n"
   );
 
@@ -446,14 +500,14 @@ async function run() {
   // --------------------------------------------------------------------------
 
   eq(
-    "bullet * → -",
-    normalizeMarkdown("* one\n* two\n* three\n"),
+    "bullet * → - (serializer bullet option)",
+    ulThroughPipeline(["one", "two", "three"]),
     "- one\n- two\n- three\n"
   );
 
   eq(
-    "renumber ordered list",
-    normalizeMarkdown("1. first\n1. second\n1. third\n"),
+    "renumber ordered list (serializer incrementListMarker)",
+    olThroughPipeline(["first", "second", "third"]),
     "1. first\n2. second\n3. third\n"
   );
 
@@ -476,44 +530,74 @@ async function run() {
     "- [x] done item\n"
   );
 
-  // Image + duplicate alt text dedup
+  // Image + duplicate alt caption removal — now a tree transform (slice 3b of
+  // #78), tested through the real html→md path (image + a separate caption
+  // paragraph, the shape the editor actually emits).
   eq(
-    "image followed by alt text dedup",
-    normalizeMarkdown("![pic](a.png)\npic\n"),
+    "image followed by a duplicate-alt paragraph is deduped",
+    htmlMd('<p><img src="a.png" alt="pic"></p><p>pic</p>'),
     "![pic](a.png)\n"
   );
+  // a real (non-duplicate) caption is kept
+  eq(
+    "image with a non-duplicate caption keeps the caption",
+    htmlMd('<p><img src="a.png" alt="pic"></p><p>a real caption</p>'),
+    "![pic](a.png)\n\na real caption\n"
+  );
+  // a run of duplicate captions collapses in ONE pass (stays a fixed point)
+  eq(
+    "image dedup collapses a run of duplicate captions in one pass",
+    htmlMd('<p><img src="a.png" alt="a"></p><p>a</p><p>a</p>'),
+    "![a](a.png)\n"
+  );
+  // fence-safety: a duplicate caption SHOWN inside a code fence is left untouched
+  eq(
+    "image dedup does NOT touch a duplicate shown inside a fence",
+    codeFencePipeline("markdown", "![pic](a.png)\n\npic"),
+    "```markdown\n![pic](a.png)\n\npic\n```\n"
+  );
 
-  // compactLists: removes blank lines between list items
+  // compactLists (now a tree transform, slice 3 of #78) — tested through the
+  // real pipeline (observable output), not the removed text helper.
   eq(
     "compactLists: removes blank lines between items",
-    normalizeMarkdown("- one\n\n- two\n\n- three\n"),
+    await listMd("- one\n\n- two\n\n- three\n"),
     "- one\n- two\n- three\n"
   );
-
-  // compactLists preserves blanks between different list types at top level
-  const mixedListOut = normalizeMarkdown("- bullet\n\n1. number\n");
-  assert(
+  // preserves the blank between two different list types at top level
+  eq(
     "compactLists: keeps blank between ul and ol at top level",
-    mixedListOut.includes("- bullet\n\n1. number"),
-    mixedListOut
+    await listMd("- bullet\n\n1. number\n"),
+    "- bullet\n\n1. number\n"
   );
-
-  // compactLists preserves blanks between list item and indented paragraph
-  // (structural: blank + indent = paragraph IS part of the list item)
+  // an item's own blank before an indented paragraph is preserved (the item is
+  // legitimately loose); only blanks *between items* are removed
   eq(
     "compactLists: preserves blank between list item and indented para (2sp)",
-    normalizeMarkdown("- item\n\n  indented para\n"),
+    await listMd("- item\n\n  indented para\n"),
     "- item\n\n  indented para\n"
   );
   eq(
-    "compactLists: preserves blank between list item and 4-sp indent (code)",
-    normalizeMarkdown("- item\n\n    code-indented\n"),
-    "- item\n\n    code-indented\n"
+    "compactLists: preserves blank before an item's indented child block",
+    await listMd("- item\n\n    code-indented\n"),
+    "- item\n\n  code-indented\n"
   );
   eq(
     "compactLists: preserves blank between list and following unindented para",
-    normalizeMarkdown("- one\n- two\n\nparagraph after\n"),
+    await listMd("- one\n- two\n\nparagraph after\n"),
     "- one\n- two\n\nparagraph after\n"
+  );
+  // a parent item and its nested sublist stay tight (no blank inserted)
+  eq(
+    "compactLists: parent → nested sublist stays tight",
+    await listMd("- Parent\n  - Child\n  - Another\n- Back\n"),
+    "- Parent\n  - Child\n  - Another\n- Back\n"
+  );
+  // fence-safety: a loose list SHOWN inside a code fence is left untouched
+  eq(
+    "compactLists: loose list inside a fence is NOT tightened",
+    codeFencePipeline("markdown", "- one\n\n- two"),
+    "```markdown\n- one\n\n- two\n```\n"
   );
 
   // Table header reconstruction: empty header row + separator → first row becomes header
@@ -864,12 +948,12 @@ async function run() {
   // compactLists toggle: when disabled, blank lines between list items remain
   eq(
     "settings: compactLists=false preserves blanks between items",
-    normalizeMarkdown("- a\n\n- b\n\n- c\n", mergeSettings({ compactLists: false })),
+    await listMd("- a\n\n- b\n\n- c\n", mergeSettings({ compactLists: false })),
     "- a\n\n- b\n\n- c\n"
   );
   eq(
     "settings: compactLists=true compacts blanks between items (default)",
-    normalizeMarkdown("- a\n\n- b\n\n- c\n", DEFAULT_SETTINGS),
+    await listMd("- a\n\n- b\n\n- c\n", DEFAULT_SETTINGS),
     "- a\n- b\n- c\n"
   );
 
@@ -888,74 +972,95 @@ async function run() {
   // shellscriptToBash toggle
   eq(
     "settings: shellscriptToBash=true rewrites label (default)",
-    normalizeMarkdown("```shellscript\necho hi\n```\n", DEFAULT_SETTINGS),
+    codeFencePipeline("shellscript", "echo hi", DEFAULT_SETTINGS),
     "```bash\necho hi\n```\n"
   );
   eq(
     "settings: shellscriptToBash=false keeps shellscript",
-    normalizeMarkdown("```shellscript\necho hi\n```\n", mergeSettings({ shellscriptToBash: false })),
+    codeFencePipeline("shellscript", "echo hi", mergeSettings({ shellscriptToBash: false })),
     "```shellscript\necho hi\n```\n"
   );
 
-  // renumberOrderedLists toggle
+  // renumberOrderedLists toggle → the serializer's incrementListMarker option
   eq(
     "settings: renumberOrderedLists=true renumbers (default)",
-    normalizeMarkdown("1. a\n1. b\n1. c\n", DEFAULT_SETTINGS),
+    olThroughPipeline(["a", "b", "c"], DEFAULT_SETTINGS),
     "1. a\n2. b\n3. c\n"
   );
   eq(
     "settings: renumberOrderedLists=false keeps original numbers",
-    normalizeMarkdown("1. a\n1. b\n1. c\n", mergeSettings({ renumberOrderedLists: false })),
+    olThroughPipeline(["a", "b", "c"], mergeSettings({ renumberOrderedLists: false })),
     "1. a\n1. b\n1. c\n"
   );
   eq(
     "settings: renumberOrderedLists keeps a non-1 start (#54)",
-    normalizeMarkdown("6. a\n6. b\n6. c\n", DEFAULT_SETTINGS),
+    olThroughPipeline(["a", "b", "c"], DEFAULT_SETTINGS, 6),
     "6. a\n7. b\n8. c\n"
   );
   eq(
     "settings: renumberOrderedLists leaves a correct non-1 sequence (#54)",
-    normalizeMarkdown("5. a\n6. b\n7. c\n", DEFAULT_SETTINGS),
+    olThroughPipeline(["a", "b", "c"], DEFAULT_SETTINGS, 5),
     "5. a\n6. b\n7. c\n"
   );
   eq(
-    "settings: renumberOrderedLists clamps a >9-digit overflow, no illegal marker (#54)",
-    normalizeMarkdown("999999999. a\n999999999. b\n", DEFAULT_SETTINGS),
-    "999999999. a\n1. b\n"
+    "settings: orderedListGuard clamps a >9-digit overflow to a legal marker (#54)",
+    olThroughPipeline(["a", "b"], DEFAULT_SETTINGS, 999999999),
+    "1. a\n2. b\n"
   );
 
-  // bullet setting: normalizeMarkdown rewrites other bullets to preferred
+  // bullet setting → the serializer's `bullet` option
   eq(
     "settings: bullet='*' converts - to *",
-    normalizeMarkdown("- one\n- two\n", mergeSettings({ bullet: "*" })),
+    ulThroughPipeline(["one", "two"], mergeSettings({ bullet: "*" })),
     "* one\n* two\n"
   );
   eq(
     "settings: bullet='+' converts - to +",
-    normalizeMarkdown("- one\n- two\n", mergeSettings({ bullet: "+" })),
+    ulThroughPipeline(["one", "two"], mergeSettings({ bullet: "+" })),
     "+ one\n+ two\n"
+  );
+  // slice 2 of #78: a numbered list shown INSIDE a fence is opaque content and
+  // is never renumbered (the old text pass corrupted it — this is issue #68).
+  eq(
+    "pipeline: numbered list inside a markdown fence is NOT renumbered (#68)",
+    codeFencePipeline("markdown", "6. a\n6. b"),
+    "```markdown\n6. a\n6. b\n```\n"
   );
 
   // defaultCodeBlockLang
   eq(
     "settings: defaultCodeBlockLang='' leaves bare fences alone (default)",
-    normalizeMarkdown("```\nhello\n```\n", DEFAULT_SETTINGS),
+    codeFencePipeline("", "hello", DEFAULT_SETTINGS),
     "```\nhello\n```\n"
   );
   eq(
     "settings: defaultCodeBlockLang='text' labels bare fences when user opts in",
-    normalizeMarkdown("```\nhello\n```\n", mergeSettings({ defaultCodeBlockLang: "text" })),
+    codeFencePipeline("", "hello", mergeSettings({ defaultCodeBlockLang: "text" })),
     "```text\nhello\n```\n"
   );
   eq(
     "settings: defaultCodeBlockLang='' strips text label",
-    normalizeMarkdown("```text\nhello\n```\n", mergeSettings({ defaultCodeBlockLang: "" })),
+    codeFencePipeline("text", "hello", mergeSettings({ defaultCodeBlockLang: "" })),
     "```\nhello\n```\n"
   );
   eq(
     "settings: defaultCodeBlockLang leaves real languages alone",
-    normalizeMarkdown("```python\nprint('x')\n```\n", mergeSettings({ defaultCodeBlockLang: "" })),
+    codeFencePipeline("python", "print('x')", mergeSettings({ defaultCodeBlockLang: "" })),
     "```python\nprint('x')\n```\n"
+  );
+
+  // slice 1 of #78: the code-node transform is fence-aware — a fence shown
+  // INSIDE another fence is opaque content, never rewritten. The old text
+  // passes were fence-blind here and would have corrupted these.
+  eq(
+    "pipeline: shellscript shown inside a markdown fence is NOT rewritten",
+    codeFencePipeline("markdown", "```shellscript\necho hi\n```"),
+    "````markdown\n```shellscript\necho hi\n```\n````\n"
+  );
+  eq(
+    "pipeline: bare fence inside a fence keeps no default lang label",
+    codeFencePipeline("markdown", "```\nplain\n```", mergeSettings({ defaultCodeBlockLang: "text" })),
+    "````markdown\n```\nplain\n```\n````\n"
   );
 
   // --------------------------------------------------------------------------

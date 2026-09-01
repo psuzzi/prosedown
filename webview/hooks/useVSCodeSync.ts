@@ -4,11 +4,8 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkRehype from "remark-rehype";
 import rehypeStringify from "rehype-stringify";
-import remarkStringify from "remark-stringify";
-import rehypeParse from "rehype-parse";
-import rehypeRemark from "rehype-remark";
 
-import { buildMarkdownConfig, normalizeMarkdown } from "../markdown.config";
+import { buildMdPipeline, normalizeMarkdown } from "../markdown.config";
 import { DEFAULT_SETTINGS, type ProsedownSettings } from "../settings";
 import {
   mathHandlers,
@@ -283,12 +280,7 @@ export async function htmlToMarkdown(
   settings: ProsedownSettings = DEFAULT_SETTINGS
 ): Promise<string> {
   html = preprocessTiptapHtml(html);
-  const result = await unified()
-    .use(rehypeParse, { fragment: true })
-    .use(rehypeRemark)
-    .use(remarkGfm)
-    .use(remarkStringify, buildMarkdownConfig(settings))
-    .process(html);
+  const result = await buildMdPipeline(settings).process(html);
   return postprocessMarkdown(String(result), settings, baseUri, docFolderPath);
 }
 
@@ -304,12 +296,7 @@ export function htmlToMarkdownSync(
   settings: ProsedownSettings = DEFAULT_SETTINGS
 ): string {
   html = preprocessTiptapHtml(html);
-  const result = unified()
-    .use(rehypeParse, { fragment: true })
-    .use(rehypeRemark)
-    .use(remarkGfm)
-    .use(remarkStringify, buildMarkdownConfig(settings))
-    .processSync(html);
+  const result = buildMdPipeline(settings).processSync(html);
   return postprocessMarkdown(String(result), settings, baseUri, docFolderPath);
 }
 
