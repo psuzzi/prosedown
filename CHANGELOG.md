@@ -2,6 +2,8 @@
 
 ## 1.0.x
 
+- Fix: **Saving no longer rewrites content inside fenced code blocks.** A numbered list, bullet, table, task list, or escaped character shown *as an example* inside a ` ``` ` or `~~~` code block is now left byte-for-byte untouched on save — previously the save-time tidy-up would renumber `6.`/`6.` to `6.`/`7.`, unify bullets, pad example tables, and strip escapes, corrupting documentation you never edited. Under the hood the save-time normalization moved from text post-processing to **tree-based (mdast) transforms**, so a code block is structurally out of reach; the change also removed redundant renumber/bullet passes (remark-stringify does this natively) and makes every conversion a stable fixed point across repeated saves. ([#68](https://github.com/psuzzi/prosedown/issues/68), [#69](https://github.com/psuzzi/prosedown/issues/69))
+
 - Fix: **Ordered lists that don't start at `1.` are no longer renumbered to `1.`** on save. Opening and saving a file with a continued list (e.g. `6. 7. 8.`) rewrote it to `1. 2. 3.`, producing a spurious diff in content you never touched. The renumberer now seeds from the list's first item — so `1./1./1.` still normalises to `1./2./3.`, but a deliberate start is kept. ([#54](https://github.com/psuzzi/prosedown/issues/54))
 
 - Fix: **"Open in Browser" now waits for the server to be ready** instead of blindly pausing 1.5s. It polls the freshly-spawned server and opens the browser the moment it answers — snappier on fast machines, and no longer opening a "connection refused" page on a slow/cold start. If the server fails to start, you now get an error message instead of a dead page. ([#58](https://github.com/psuzzi/prosedown/issues/58))

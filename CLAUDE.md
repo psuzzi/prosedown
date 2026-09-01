@@ -61,11 +61,13 @@ Never tag without explicit user approval — tagging triggers a live marketplace
 
 ## Conversion pipeline files (where bugs live)
 
-- `webview/hooks/useVSCodeSync.ts` — `markdownToHtml` / `htmlToMarkdown`, production DOM-based transforms (DOMParser-backed).
-- `webview/markdown.config.ts` — `normalizeMarkdown` post-processing (task lists, table headers, unescaping, list compaction, etc.).
-- `test/pipeline.ts` — regex-based mirror of the production pipeline used by test scripts (no DOMParser in Node).
+The html→md save path is a **tree-based** pipeline (epic #78): `buildMdPipeline` builds an mdast and runs **mdast transforms** on it before serializing; `normalizeMarkdown` is a small, **fence-safe** text tail that only adjusts remark-stringify's escaping/formatting. No pass is fence-blind.
 
-When you touch any of these, add/update a test case in `test/test-conversions.ts` in the matching category (A-P).
+- `webview/markdown.config.ts` — **`buildMdPipeline(settings)`**, the shared html→md pipeline (`rehype-parse → rehype-remark → remark-gfm → mdast transforms → remark-stringify`), used by both `useVSCodeSync.ts` save paths and `test/pipeline.ts`. **Structure/fence-info normalization lives here as tree transforms:** `codeInfoTransform` (fence languages), `orderedListGuard` (>9-digit ordered-marker clamp), `listCompactTransform` (tight lists), `imageDedupTransform` (duplicate captions); bullet/number formatting is remark-stringify's own `bullet`/`incrementListMarker` options. Also **`normalizeMarkdown`** — the post-stringify text tail (unescape `\* \_ \~ \[ \=`, strip autolinks, unescape bare URLs, safety entities, tables, task lists). Every pass runs through `eachLineOutsideFences` / `mapSegmentsOutsideFences` (both backed by one `stepFence` detector), so none can rewrite content shown inside a fenced code block.
+- `webview/hooks/useVSCodeSync.ts` — `markdownToHtml` (md→html for the editor) / `htmlToMarkdown` + `htmlToMarkdownSync` (both call `buildMdPipeline` then `normalizeMarkdown`), production DOMParser-backed.
+- `test/pipeline.ts` — test mirror; imports `buildMdPipeline` + `normalizeMarkdown` directly (regex only where DOMParser isn't available in Node).
+
+When you touch any of these, add/update a test case in `test/test-conversions.ts` in the matching category. **A new normalization belongs as an mdast transform in `buildMdPipeline`** (structure/fence-info) — not a text pass — unless it merely adjusts remark-stringify's escaping, which stays as a fence-aware pass in `normalizeMarkdown`. Every fence-relevant pass needs a "shown inside a fence → left verbatim" test.
 
 ## Adding a new conversion test
 
