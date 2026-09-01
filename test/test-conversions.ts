@@ -151,6 +151,11 @@ function ulThroughPipeline(items: string[], settings = DEFAULT_SETTINGS): string
 async function listMd(md: string, settings = DEFAULT_SETTINGS): Promise<string> {
   return String(await buildMdPipeline(settings).process(await mdToHtml(md)));
 }
+/** Run an HTML fixture through the html→md pipeline (as rehype-remark feeds the
+ * save path). Used to test transforms whose input is editor HTML. */
+function htmlMd(html: string, settings = DEFAULT_SETTINGS): string {
+  return String(buildMdPipeline(settings).processSync(html));
+}
 
 // ============================================================================
 // Tests
@@ -525,11 +530,31 @@ async function run() {
     "- [x] done item\n"
   );
 
-  // Image + duplicate alt text dedup
+  // Image + duplicate alt caption removal — now a tree transform (slice 3b of
+  // #78), tested through the real html→md path (image + a separate caption
+  // paragraph, the shape the editor actually emits).
   eq(
-    "image followed by alt text dedup",
-    normalizeMarkdown("![pic](a.png)\npic\n"),
+    "image followed by a duplicate-alt paragraph is deduped",
+    htmlMd('<p><img src="a.png" alt="pic"></p><p>pic</p>'),
     "![pic](a.png)\n"
+  );
+  // a real (non-duplicate) caption is kept
+  eq(
+    "image with a non-duplicate caption keeps the caption",
+    htmlMd('<p><img src="a.png" alt="pic"></p><p>a real caption</p>'),
+    "![pic](a.png)\n\na real caption\n"
+  );
+  // a run of duplicate captions collapses in ONE pass (stays a fixed point)
+  eq(
+    "image dedup collapses a run of duplicate captions in one pass",
+    htmlMd('<p><img src="a.png" alt="a"></p><p>a</p><p>a</p>'),
+    "![a](a.png)\n"
+  );
+  // fence-safety: a duplicate caption SHOWN inside a code fence is left untouched
+  eq(
+    "image dedup does NOT touch a duplicate shown inside a fence",
+    codeFencePipeline("markdown", "![pic](a.png)\n\npic"),
+    "```markdown\n![pic](a.png)\n\npic\n```\n"
   );
 
   // compactLists (now a tree transform, slice 3 of #78) — tested through the

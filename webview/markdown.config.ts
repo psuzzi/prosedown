@@ -59,6 +59,7 @@ export function buildMdPipeline(settings: ProsedownSettings = DEFAULT_SETTINGS) 
     .use(codeInfoTransform, settings)
     .use(orderedListGuard)
     .use(listCompactTransform, settings)
+    .use(imageDedupTransform, settings)
     .use(remarkStringify, buildMarkdownConfig(settings));
 }
 
@@ -142,6 +143,39 @@ function listCompactTransform(settings: ProsedownSettings) {
 }
 
 /**
+ * Remove a paragraph that only repeats the preceding image's alt text. The editor
+ * can emit an image and then a caption paragraph with the same text; an editor
+ * should never persist duplicate content. Tree form of the old `dedupImageAltText`
+ * pass — it works on sibling nodes, so it can never touch a fenced code block.
+ */
+function imageDedupTransform(settings: ProsedownSettings) {
+  return (tree: Root) => {
+    if (!settings.dedupImageAltText) return;
+    visit(tree, "paragraph", (node, index, parent) => {
+      if (!parent || index == null) return;
+      const only = node.children.length === 1 ? node.children[0] : undefined;
+      if (!only || only.type !== "image" || !only.alt) return;
+      // Drop EVERY consecutive paragraph that only repeats this image's alt, so a
+      // run of duplicates collapses in a single pass (stays a fixed point).
+      for (;;) {
+        const next = parent.children[index + 1];
+        if (
+          next &&
+          next.type === "paragraph" &&
+          next.children.length === 1 &&
+          next.children[0].type === "text" &&
+          next.children[0].value === only.alt
+        ) {
+          parent.children.splice(index + 1, 1);
+        } else {
+          break;
+        }
+      }
+    });
+  };
+}
+
+/**
  * Post-process markdown to fix formatting issues
  * that remark-stringify doesn't handle correctly.
  *
@@ -165,9 +199,8 @@ export function normalizeMarkdown(
     md = fixTableHeaders(md);
   }
   md = padTables(md);
-  if (settings.dedupImageAltText) {
-    md = md.replace(/(!\[([^\]]+)\]\([^)]+\))\n+\2\s*$/gm, "$1\n");
-  }
+  // Duplicate image-caption removal now handled on the tree (imageDedupTransform
+  // in buildMdPipeline, slice 3b of #78) — never touches content inside a fence.
   md = stripAutolinks(md);
   md = unescapeBareUrls(md);
   md = replaceSafetyEntities(md);
