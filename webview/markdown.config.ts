@@ -209,36 +209,42 @@ export function normalizeMarkdown(
   return md;
 }
 
+/** An open fenced code block: its delimiter char and length, or null if none. */
+type FenceState = { char: string; len: number } | null;
+
+/**
+ * One step of fence tracking — the **single source of truth** for fence detection
+ * shared by every post-stringify text pass (slice 4 of #78). Given the current
+ * state and a line, reports whether the line is a fence delimiter and the state
+ * after it. Handles ``` and ~~~ fences, 0–3 spaces of indent, and a closer that
+ * matches the opener's char and is at least as long (CommonMark §4.5).
+ */
+function stepFence(line: string, fence: FenceState): { isFence: boolean; fence: FenceState } {
+  const m = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+  if (!m) return { isFence: false, fence };
+  const ticks = m[1];
+  if (!fence) return { isFence: true, fence: { char: ticks[0], len: ticks.length } };
+  if (ticks[0] === fence.char && ticks.length >= fence.len && m[2].trim() === "") {
+    return { isFence: true, fence: null }; // matching closer
+  }
+  return { isFence: true, fence }; // a fence-looking line inside a different fence
+}
+
 /**
  * Run `fn` on each line that is OUTSIDE a fenced code block; fence lines and the
- * lines inside a fence pass through untouched. Handles both ``` and ~~~ fences,
- * 0–3 spaces of indent, and a closer that matches the opener's char and is at
- * least as long (CommonMark §4.5). Shared by every post-stringify text pass so
- * none of them can rewrite content shown inside a fence (slice 4 of #78).
+ * lines inside a fence pass through untouched.
  */
 function eachLineOutsideFences(md: string, fn: (line: string) => string): string {
-  const lines = md.split("\n");
-  let fence: { char: string; len: number } | null = null;
-  const out: string[] = [];
-  for (const line of lines) {
-    const m = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
-    if (m) {
-      const ticks = m[1];
-      if (!fence) {
-        fence = { char: ticks[0], len: ticks.length };
-      } else if (
-        ticks[0] === fence.char &&
-        ticks.length >= fence.len &&
-        m[2].trim() === ""
-      ) {
-        fence = null; // matching closer
-      }
-      out.push(line); // fence lines are never transformed
-      continue;
-    }
-    out.push(fence ? line : fn(line));
-  }
-  return out.join("\n");
+  let fence: FenceState = null;
+  return md
+    .split("\n")
+    .map((line) => {
+      const step = stepFence(line, fence);
+      fence = step.fence;
+      // Fence delimiters are never transformed; nor are lines inside a fence.
+      return step.isFence || fence ? line : fn(line);
+    })
+    .join("\n");
 }
 
 /**
@@ -264,6 +270,39 @@ function outsideInlineCode(line: string, fn: (segment: string) => string): strin
     remaining = remaining.slice(end + 1);
   }
   return out;
+}
+
+/**
+ * Run a block-oriented transform `fn` on each maximal run of lines OUTSIDE fenced
+ * code blocks; the fence lines and their contents pass through untouched. Lets a
+ * multi-line pass (table detection, task-list merging) keep its logic while never
+ * seeing — and so never rewriting — content shown inside a fence (slice 4 of #78).
+ */
+function mapSegmentsOutsideFences(md: string, fn: (segment: string) => string): string {
+  let fence: FenceState = null;
+  const out: string[] = [];
+  let buffer: string[] = [];
+  const flush = () => {
+    if (buffer.length) {
+      out.push(fn(buffer.join("\n")));
+      buffer = [];
+    }
+  };
+  for (const line of md.split("\n")) {
+    const wasInFence = fence !== null;
+    const step = stepFence(line, fence);
+    fence = step.fence;
+    if (step.isFence) {
+      if (!wasInFence) flush(); // entering a fence ends the current segment
+      out.push(line);
+    } else if (fence) {
+      out.push(line); // inside a fence
+    } else {
+      buffer.push(line); // outside — accumulate for the block transform
+    }
+  }
+  flush();
+  return out.join("\n");
 }
 
 /**
@@ -308,6 +347,9 @@ function unescapeText(text: string): string {
  * Merges them into: - [ ] text
  */
 function fixTaskLists(md: string): string {
+  return mapSegmentsOutsideFences(md, fixTaskListsInSegment);
+}
+function fixTaskListsInSegment(md: string): string {
   md = md.replace(/^(\s*-\s)\\\[(\s)\\\]/gm, "$1[$2]");
   md = md.replace(/^(\s*-\s)\\\[([xX])\\\]/gm, "$1[$2]");
   md = md.replace(/^(\s*-\s)\\(\[[\sxX]\])/gm, "$1$2");
@@ -366,6 +408,9 @@ function fixTaskLists(md: string): string {
  * Fix tables where rehype-remark adds an empty header row.
  */
 function fixTableHeaders(md: string): string {
+  return mapSegmentsOutsideFences(md, fixTableHeadersInSegment);
+}
+function fixTableHeadersInSegment(md: string): string {
   const lines = md.split("\n");
   const result: string[] = [];
   let i = 0;
@@ -409,6 +454,9 @@ function fixTableHeaders(md: string): string {
  * padding doesn't cause cosmetic diffs on the first round-trip.
  */
 function padTables(md: string): string {
+  return mapSegmentsOutsideFences(md, padTablesInSegment);
+}
+function padTablesInSegment(md: string): string {
   const lines = md.split("\n");
   const result: string[] = [];
   let i = 0;

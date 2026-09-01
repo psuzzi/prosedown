@@ -644,6 +644,20 @@ async function run() {
     "| Company | **$14B** |\n| ------- | -------- |\n"
   );
 
+  // slice 4b of #78: the block-oriented passes (tables, task lists) are now
+  // fence-aware — a table or task list SHOWN inside a fence is left verbatim,
+  // while a real one outside is still formatted.
+  eq(
+    "table shown inside a fence is NOT reformatted",
+    normalizeMarkdown("```\n| a | b |\n| - | - |\n| ccc | d |\n```\n"),
+    "```\n| a | b |\n| - | - |\n| ccc | d |\n```\n"
+  );
+  eq(
+    "escaped task shown inside a fence is NOT unescaped",
+    normalizeMarkdown("```\n- \\[ \\] example task\n```\n"),
+    "```\n- \\[ \\] example task\n```\n"
+  );
+
   // HTML entity cleanup
   eq(
     "HTML entity cleanup: &#x20; → space",
