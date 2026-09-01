@@ -58,6 +58,7 @@ export function buildMdPipeline(settings: ProsedownSettings = DEFAULT_SETTINGS) 
     .use(remarkGfm)
     .use(codeInfoTransform, settings)
     .use(orderedListGuard)
+    .use(listCompactTransform, settings)
     .use(remarkStringify, buildMarkdownConfig(settings));
 }
 
@@ -114,6 +115,33 @@ function codeInfoTransform(settings: ProsedownSettings) {
 }
 
 /**
+ * Tight lists. remark-stringify keeps a list "loose" (blank lines between items)
+ * when the mdast marks it spread; the old text pass `compactLists` stripped those
+ * blanks. On the tree that is clearing the LIST's `spread` flag — and it can
+ * never reach a list shown inside a fenced code block. An item's own spread is
+ * left alone, so a blank line between an item and its indented child block is
+ * preserved (matching the old pass).
+ */
+function listCompactTransform(settings: ProsedownSettings) {
+  return (tree: Root) => {
+    if (!settings.compactLists) return;
+    visit(tree, "list", (node) => {
+      node.spread = false;
+      for (const item of node.children) {
+        // Tighten only the canonical nested-list item: a leading paragraph
+        // immediately followed by a sublist (parent → sublist has no blank line).
+        // Any other shape — a trailing paragraph after the sublist, or two
+        // paragraphs — is left loose, so its blank lines are preserved and the
+        // result stays a fixed point across saves (matches the old text pass).
+        if (item.children.length === 2 && item.children[1].type === "list") {
+          item.spread = false;
+        }
+      }
+    });
+  };
+}
+
+/**
  * Post-process markdown to fix formatting issues
  * that remark-stringify doesn't handle correctly.
  *
@@ -144,9 +172,8 @@ export function normalizeMarkdown(
   md = unescapeBareUrls(md);
   md = replaceSafetyEntities(md);
   md = fixOrphanedListMarkers(md);
-  if (settings.compactLists) {
-    md = compactLists(md);
-  }
+  // List tightness now handled on the tree (listCompactTransform in
+  // buildMdPipeline, slice 3 of #78) — never touches a list shown in a fence.
   return md;
 }
 
@@ -594,64 +621,6 @@ function fixOrphanedListMarkers(md: string): string {
     }
     result.push(lines[i]);
     i++;
-  }
-  return result.join("\n");
-}
-
-/**
- * Remove blank lines between consecutive list items to produce tight lists.
- * Preserves blank lines around non-list content.
- */
-function compactLists(md: string): string {
-  const LIST_ITEM = /^(\s*)(?:[-*]|\d+\.)\s/;
-  const ORDERED = /^(\s*)\d+\.\s/;
-  const UNORDERED = /^(\s*)[-*]\s/;
-  const lines = md.split("\n");
-  const result: string[] = [];
-  let inCodeBlock = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    if (/^```/.test(lines[i])) inCodeBlock = !inCodeBlock;
-    if (inCodeBlock) {
-      result.push(lines[i]);
-      continue;
-    }
-
-    if (lines[i].trim() === "") {
-      let prevLine = "";
-      for (let p = result.length - 1; p >= 0; p--) {
-        if (result[p].trim() !== "") {
-          prevLine = result[p];
-          break;
-        }
-      }
-      let nextLine = "";
-      for (let n = i + 1; n < lines.length; n++) {
-        if (lines[n].trim() !== "") {
-          nextLine = lines[n];
-          break;
-        }
-      }
-
-      const prevIsList = LIST_ITEM.test(prevLine);
-      const nextIsList = LIST_ITEM.test(nextLine);
-
-      if (prevIsList && nextIsList) {
-        // Keep blank line between different list types at top level
-        const prevIndent = prevLine.match(/^(\s*)/)?.[1]?.length ?? 0;
-        const nextIndent = nextLine.match(/^(\s*)/)?.[1]?.length ?? 0;
-        const sameType =
-          (ORDERED.test(prevLine) && ORDERED.test(nextLine)) ||
-          (UNORDERED.test(prevLine) && UNORDERED.test(nextLine));
-        if (prevIndent === 0 && nextIndent === 0 && !sameType) {
-          result.push(lines[i]); // keep the blank line
-        }
-        // else: skip (compact)
-        continue;
-      }
-    }
-
-    result.push(lines[i]);
   }
   return result.join("\n");
 }

@@ -142,6 +142,15 @@ function ulThroughPipeline(items: string[], settings = DEFAULT_SETTINGS): string
   const html = `<ul>` + items.map((t) => `<li>${t}</li>`).join("") + `</ul>`;
   return String(buildMdPipeline(settings).processSync(html));
 }
+/**
+ * Run markdown through the full round-trip pipeline (md → html → md via
+ * buildMdPipeline). Used to test list tightness (slice 3 of #78), which now lives
+ * in a tree transform, so tests exercise observable output — not the old text
+ * helper — and honour the settings.
+ */
+async function listMd(md: string, settings = DEFAULT_SETTINGS): Promise<string> {
+  return String(await buildMdPipeline(settings).process(await mdToHtml(md)));
+}
 
 // ============================================================================
 // Tests
@@ -261,6 +270,13 @@ async function run() {
   await roundtripCase(
     "mixed ul+ol",
     "- Unordered\n  1. Ordered child\n  2. Another ordered\n- Back to unordered"
+  );
+  // A list item with a paragraph AFTER its sublist must stay loose — tightening
+  // it collapses the trailing blank and drifts on the next save. Regression for
+  // the compactLists tree transform (#78 slice 3a).
+  await roundtripCase(
+    "list item with a paragraph after its sublist stays loose + idempotent",
+    "- item text\n\n  - nested one\n  - nested two\n\n  trailing para\n"
   );
   await roundtripCase(
     "list with inline link",
@@ -516,37 +532,47 @@ async function run() {
     "![pic](a.png)\n"
   );
 
-  // compactLists: removes blank lines between list items
+  // compactLists (now a tree transform, slice 3 of #78) — tested through the
+  // real pipeline (observable output), not the removed text helper.
   eq(
     "compactLists: removes blank lines between items",
-    normalizeMarkdown("- one\n\n- two\n\n- three\n"),
+    await listMd("- one\n\n- two\n\n- three\n"),
     "- one\n- two\n- three\n"
   );
-
-  // compactLists preserves blanks between different list types at top level
-  const mixedListOut = normalizeMarkdown("- bullet\n\n1. number\n");
-  assert(
+  // preserves the blank between two different list types at top level
+  eq(
     "compactLists: keeps blank between ul and ol at top level",
-    mixedListOut.includes("- bullet\n\n1. number"),
-    mixedListOut
+    await listMd("- bullet\n\n1. number\n"),
+    "- bullet\n\n1. number\n"
   );
-
-  // compactLists preserves blanks between list item and indented paragraph
-  // (structural: blank + indent = paragraph IS part of the list item)
+  // an item's own blank before an indented paragraph is preserved (the item is
+  // legitimately loose); only blanks *between items* are removed
   eq(
     "compactLists: preserves blank between list item and indented para (2sp)",
-    normalizeMarkdown("- item\n\n  indented para\n"),
+    await listMd("- item\n\n  indented para\n"),
     "- item\n\n  indented para\n"
   );
   eq(
-    "compactLists: preserves blank between list item and 4-sp indent (code)",
-    normalizeMarkdown("- item\n\n    code-indented\n"),
-    "- item\n\n    code-indented\n"
+    "compactLists: preserves blank before an item's indented child block",
+    await listMd("- item\n\n    code-indented\n"),
+    "- item\n\n  code-indented\n"
   );
   eq(
     "compactLists: preserves blank between list and following unindented para",
-    normalizeMarkdown("- one\n- two\n\nparagraph after\n"),
+    await listMd("- one\n- two\n\nparagraph after\n"),
     "- one\n- two\n\nparagraph after\n"
+  );
+  // a parent item and its nested sublist stay tight (no blank inserted)
+  eq(
+    "compactLists: parent → nested sublist stays tight",
+    await listMd("- Parent\n  - Child\n  - Another\n- Back\n"),
+    "- Parent\n  - Child\n  - Another\n- Back\n"
+  );
+  // fence-safety: a loose list SHOWN inside a code fence is left untouched
+  eq(
+    "compactLists: loose list inside a fence is NOT tightened",
+    codeFencePipeline("markdown", "- one\n\n- two"),
+    "```markdown\n- one\n\n- two\n```\n"
   );
 
   // Table header reconstruction: empty header row + separator → first row becomes header
@@ -897,12 +923,12 @@ async function run() {
   // compactLists toggle: when disabled, blank lines between list items remain
   eq(
     "settings: compactLists=false preserves blanks between items",
-    normalizeMarkdown("- a\n\n- b\n\n- c\n", mergeSettings({ compactLists: false })),
+    await listMd("- a\n\n- b\n\n- c\n", mergeSettings({ compactLists: false })),
     "- a\n\n- b\n\n- c\n"
   );
   eq(
     "settings: compactLists=true compacts blanks between items (default)",
-    normalizeMarkdown("- a\n\n- b\n\n- c\n", DEFAULT_SETTINGS),
+    await listMd("- a\n\n- b\n\n- c\n", DEFAULT_SETTINGS),
     "- a\n- b\n- c\n"
   );
 
