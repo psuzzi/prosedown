@@ -218,6 +218,10 @@ type FenceState = { char: string; len: number } | null;
  * state and a line, reports whether the line is a fence delimiter and the state
  * after it. Handles ``` and ~~~ fences, 0–3 spaces of indent, and a closer that
  * matches the opener's char and is at least as long (CommonMark §4.5).
+ *
+ * Indented (4-space) code blocks are intentionally NOT tracked: `buildMarkdownConfig`
+ * sets `fences: true`, so remark-stringify never emits one — `normalizeMarkdown`
+ * only ever sees fenced blocks.
  */
 function stepFence(line: string, fence: FenceState): { isFence: boolean; fence: FenceState } {
   const m = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
