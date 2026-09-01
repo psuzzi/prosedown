@@ -204,54 +204,77 @@ export function normalizeMarkdown(
   md = stripAutolinks(md);
   md = unescapeBareUrls(md);
   md = replaceSafetyEntities(md);
-  md = fixOrphanedListMarkers(md);
   // List tightness now handled on the tree (listCompactTransform in
   // buildMdPipeline, slice 3 of #78) — never touches a list shown in a fence.
   return md;
 }
 
 /**
- * Remove unnecessary backslash escapes that remark-stringify adds.
- * Specifically: \~, \*, \_ outside code blocks/spans.
+ * Run `fn` on each line that is OUTSIDE a fenced code block; fence lines and the
+ * lines inside a fence pass through untouched. Handles both ``` and ~~~ fences,
+ * 0–3 spaces of indent, and a closer that matches the opener's char and is at
+ * least as long (CommonMark §4.5). Shared by every post-stringify text pass so
+ * none of them can rewrite content shown inside a fence (slice 4 of #78).
+ */
+function eachLineOutsideFences(md: string, fn: (line: string) => string): string {
+  const lines = md.split("\n");
+  let fence: { char: string; len: number } | null = null;
+  const out: string[] = [];
+  for (const line of lines) {
+    const m = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+    if (m) {
+      const ticks = m[1];
+      if (!fence) {
+        fence = { char: ticks[0], len: ticks.length };
+      } else if (
+        ticks[0] === fence.char &&
+        ticks.length >= fence.len &&
+        m[2].trim() === ""
+      ) {
+        fence = null; // matching closer
+      }
+      out.push(line); // fence lines are never transformed
+      continue;
+    }
+    out.push(fence ? line : fn(line));
+  }
+  return out.join("\n");
+}
+
+/**
+ * Run `fn` on the parts of a line that are OUTSIDE inline code spans; the code
+ * spans (backtick-delimited) pass through untouched.
+ */
+function outsideInlineCode(line: string, fn: (segment: string) => string): string {
+  let out = "";
+  let remaining = line;
+  while (remaining.length > 0) {
+    const tick = remaining.indexOf("`");
+    if (tick === -1) {
+      out += fn(remaining);
+      break;
+    }
+    out += fn(remaining.slice(0, tick));
+    const end = remaining.indexOf("`", tick + 1);
+    if (end === -1) {
+      out += remaining.slice(tick);
+      break;
+    }
+    out += remaining.slice(tick, end + 1);
+    remaining = remaining.slice(end + 1);
+  }
+  return out;
+}
+
+/**
+ * Remove unnecessary backslash escapes that remark-stringify adds
+ * (`\~ \* \_ \[ \=`) outside code blocks/spans, so the saved source is clean.
  * Preserves real strikethrough (~~text~~) and emphasis markers.
  */
 function unescapeSpecialChars(md: string): string {
-  const lines = md.split("\n");
-  let inCodeBlock = false;
-  const result: string[] = [];
-
-  for (const line of lines) {
-    if (/^```/.test(line)) {
-      inCodeBlock = !inCodeBlock;
-      result.push(line);
-      continue;
-    }
-    if (inCodeBlock) {
-      result.push(line);
-      continue;
-    }
-
-    // Process outside inline code spans
-    let processed = "";
-    let remaining = line;
-    while (remaining.length > 0) {
-      const codeStart = remaining.indexOf("`");
-      if (codeStart === -1) {
-        processed += unescapeText(remaining);
-        break;
-      }
-      processed += unescapeText(remaining.slice(0, codeStart));
-      const codeEnd = remaining.indexOf("`", codeStart + 1);
-      if (codeEnd === -1) {
-        processed += remaining.slice(codeStart);
-        break;
-      }
-      processed += remaining.slice(codeStart, codeEnd + 1);
-      remaining = remaining.slice(codeEnd + 1);
-    }
-    result.push(processed);
-  }
-  return result.join("\n");
+  return eachLineOutsideFences(md, (line) =>
+    outsideInlineCode(line, unescapeText)
+  );
 }
 
 function unescapeText(text: string): string {
@@ -490,35 +513,11 @@ function isSeparatorRow(line: string): boolean {
  * to preserve the bare form they wrote.
  */
 function stripAutolinks(md: string): string {
-  const lines = md.split("\n");
-  let inCodeBlock = false;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^```/.test(lines[i])) {
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
-    if (inCodeBlock) continue;
-    // Process outside inline code spans
-    let out = "";
-    let remaining = lines[i];
-    while (remaining.length > 0) {
-      const tick = remaining.indexOf("`");
-      if (tick === -1) {
-        out += remaining.replace(/<(https?:\/\/[^\s>]+)>/g, "$1");
-        break;
-      }
-      out += remaining.slice(0, tick).replace(/<(https?:\/\/[^\s>]+)>/g, "$1");
-      const end = remaining.indexOf("`", tick + 1);
-      if (end === -1) {
-        out += remaining.slice(tick);
-        break;
-      }
-      out += remaining.slice(tick, end + 1);
-      remaining = remaining.slice(end + 1);
-    }
-    lines[i] = out;
-  }
-  return lines.join("\n");
+  return eachLineOutsideFences(md, (line) =>
+    outsideInlineCode(line, (seg) =>
+      seg.replace(/<(https?:\/\/[^\s>]+)>/g, "$1")
+    )
+  );
 }
 
 /**
@@ -530,35 +529,9 @@ function stripAutolinks(md: string): string {
 function unescapeBareUrls(md: string): string {
   const URL_RE = /\bhttps?\\:\/\/(?:[^\s\\]|\\[^\s])+/g;
   const unescape = (m: string) => m.replace(/\\([^\s])/g, "$1");
-  const lines = md.split("\n");
-  let inCodeBlock = false;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^```/.test(lines[i])) {
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
-    if (inCodeBlock) continue;
-    // Skip inline code spans so we don't touch escaped URLs inside them.
-    let out = "";
-    let remaining = lines[i];
-    while (remaining.length > 0) {
-      const tick = remaining.indexOf("`");
-      if (tick === -1) {
-        out += remaining.replace(URL_RE, unescape);
-        break;
-      }
-      out += remaining.slice(0, tick).replace(URL_RE, unescape);
-      const end = remaining.indexOf("`", tick + 1);
-      if (end === -1) {
-        out += remaining.slice(tick);
-        break;
-      }
-      out += remaining.slice(tick, end + 1);
-      remaining = remaining.slice(end + 1);
-    }
-    lines[i] = out;
-  }
-  return lines.join("\n");
+  return eachLineOutsideFences(md, (line) =>
+    outsideInlineCode(line, (seg) => seg.replace(URL_RE, unescape))
+  );
 }
 
 /**
@@ -578,34 +551,9 @@ function unescapeBareUrls(md: string): string {
  * the comment, the entity comes back, and this step rewrites it again.
  */
 function replaceSafetyEntities(md: string): string {
-  const lines = md.split("\n");
-  let inCodeBlock = false;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^```/.test(lines[i])) {
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
-    if (inCodeBlock) continue;
-    let out = "";
-    let remaining = lines[i];
-    while (remaining.length > 0) {
-      const tick = remaining.indexOf("`");
-      if (tick === -1) {
-        out += swapSafetyEntities(remaining);
-        break;
-      }
-      out += swapSafetyEntities(remaining.slice(0, tick));
-      const end = remaining.indexOf("`", tick + 1);
-      if (end === -1) {
-        out += remaining.slice(tick);
-        break;
-      }
-      out += remaining.slice(tick, end + 1);
-      remaining = remaining.slice(end + 1);
-    }
-    lines[i] = out;
-  }
-  return lines.join("\n");
+  return eachLineOutsideFences(md, (line) =>
+    outsideInlineCode(line, swapSafetyEntities)
+  );
 }
 
 function swapSafetyEntities(text: string): string {
@@ -632,28 +580,3 @@ function swapSafetyEntities(text: string): string {
   return text;
 }
 
-/**
- * Fix orphaned list markers: bare "- " on its own line followed by
- * blank lines + content → merge into single line.
- */
-function fixOrphanedListMarkers(md: string): string {
-  const lines = md.split("\n");
-  const result: string[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const markerMatch = lines[i].match(/^(\s*)-\s*$/);
-    if (markerMatch) {
-      let j = i + 1;
-      while (j < lines.length && lines[j].trim() === "") j++;
-      if (j < lines.length && lines[j].trim()) {
-        result.push(`${markerMatch[1]}- ${lines[j].trim()}`);
-        i = j + 1;
-        continue;
-      }
-    }
-    result.push(lines[i]);
-    i++;
-  }
-  return result.join("\n");
-}
