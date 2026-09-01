@@ -477,6 +477,26 @@ async function run() {
     "=> leads to something\n"
   );
 
+  // slice 4 of #78: the unescape passes are now fence-aware for ~~~ and indented
+  // fences too (not just ```), so escaped example content shown inside them is
+  // left verbatim (the old passes only tracked un-indented ``` and would have
+  // unescaped these).
+  eq(
+    "unescape: escaped content inside a ~~~ fence is left alone",
+    normalizeMarkdown("~~~\n2 \\* 3\n~~~\n"),
+    "~~~\n2 \\* 3\n~~~\n"
+  );
+  eq(
+    "unescape: escaped content inside an indented ``` fence is left alone",
+    normalizeMarkdown("   ```\n2 \\* 3\n   ```\n"),
+    "   ```\n2 \\* 3\n   ```\n"
+  );
+  eq(
+    "unescape: an autolink inside a ~~~ fence is left alone",
+    normalizeMarkdown("~~~\n<https://example.com>\n~~~\n"),
+    "~~~\n<https://example.com>\n~~~\n"
+  );
+
   // Strip <autolinks> back to bare URLs
   eq(
     "normalizeMarkdown: strip <https://...> autolink",
@@ -511,10 +531,14 @@ async function run() {
     "1. first\n2. second\n3. third\n"
   );
 
-  eq(
-    "orphaned list marker merging",
-    normalizeMarkdown("- \n\n  text here\n"),
-    "- text here\n"
+  // The old fixOrphanedListMarkers pass (removed in slice 4 of #78 — dead + buggy)
+  // merged a bare "- " marker into the following line. The pipeline now preserves
+  // an empty list item as-is; the property that matters is that it stays a fixed
+  // point across saves.
+  await roundtripCase(
+    "empty list marker input is stable (no merge, idempotent)",
+    "- \n\n  text here\n",
+    "-\n\ntext here\n"
   );
 
   // Task list checkbox fix patterns from BlockNote era
@@ -618,6 +642,20 @@ async function run() {
       "|   |   |\n| - | - |\n| Company | \\*\\*$14B** |\n"
     ),
     "| Company | **$14B** |\n| ------- | -------- |\n"
+  );
+
+  // slice 4b of #78: the block-oriented passes (tables, task lists) are now
+  // fence-aware — a table or task list SHOWN inside a fence is left verbatim,
+  // while a real one outside is still formatted.
+  eq(
+    "table shown inside a fence is NOT reformatted",
+    normalizeMarkdown("```\n| a | b |\n| - | - |\n| ccc | d |\n```\n"),
+    "```\n| a | b |\n| - | - |\n| ccc | d |\n```\n"
+  );
+  eq(
+    "escaped task shown inside a fence is NOT unescaped",
+    normalizeMarkdown("```\n- \\[ \\] example task\n```\n"),
+    "```\n- \\[ \\] example task\n```\n"
   );
 
   // HTML entity cleanup
