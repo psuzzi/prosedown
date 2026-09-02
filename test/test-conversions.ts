@@ -1533,6 +1533,109 @@ async function run() {
     `got:\n${tableRmMerged}`,
   );
 
+  category("S. Surgical save — deletions and escaped pipes");
+
+  // Deleting content used to be resurrected by the head/tail slices: the
+  // splice re-emitted the original bytes from the first/last *surviving*
+  // piece to the container edge, dragging deleted siblings back in.
+
+  eq(
+    "deleting a block and editing a later one drops the deleted block",
+    surgicalMerge(
+      "p one *a*\n\np two _b_\n\np three *c*\n",
+      "p one *a*\n\np three *c* edited\n",
+      "p one *a*\n\np two _b_\n\np three *c*\n",
+    ),
+    "p one *a*\n\np three *c* edited\n",
+  );
+
+  eq(
+    "deleting the first block does not re-emit it",
+    surgicalMerge(
+      "p one _a_\n\np two *b*\n",
+      "p two *b* edited\n",
+      "p one _a_\n\np two *b*\n",
+    ),
+    "p two *b* edited\n",
+  );
+
+  eq(
+    "deleting leading inline text inside a paragraph takes effect",
+    surgicalMerge("lead *em* tail\n", "*em* tail\n", "lead *em* tail\n"),
+    "*em* tail\n",
+  );
+
+  eq(
+    "deleting the last list item takes effect",
+    surgicalMerge("* one\n* two\n* three\n", "* one\n* two\n", "* one\n* two\n* three\n"),
+    "* one\n* two\n",
+  );
+
+  eq(
+    "splitting a paragraph does not duplicate the split-off text",
+    surgicalMerge(
+      "alpha _beta_ gamma\n\ntail *x*\n",
+      "alpha _beta_\n\ngamma\n\ntail *x*\n",
+      "alpha _beta_ gamma\n\ntail *x*\n",
+    ),
+    "alpha _beta_\n\ngamma\n\ntail *x*\n",
+  );
+
+  eq(
+    "replacing a paragraph wholesale leaves no orphaned emphasis",
+    surgicalMerge(
+      "keep me\n\np two _b_\n",
+      "keep me\n\ntotally different\n",
+      "keep me\n\np two _b_\n",
+    ),
+    "keep me\n\ntotally different\n",
+  );
+
+  eq(
+    "replacing a list item wholesale leaves no orphaned emphasis",
+    surgicalMerge("* one _x_\n* two\n", "* brand new\n* two\n", "* one _x_\n* two\n"),
+    "* brand new\n* two\n",
+  );
+
+  // A `\\|` inside a cell is one escaped pipe, not a cell boundary.
+
+  const pipeSrc = "| a | b |\n| --- | --- |\n| `x\\|y` | 2 |\n";
+  eq(
+    "adding a column to a table with an escaped pipe keeps every cell",
+    surgicalMerge(
+      pipeSrc,
+      "| a | b | c |\n| --- | --- | --- |\n| `x\\|y` | 2 | 3 |\n",
+      pipeSrc,
+    ),
+    "| a | b | c |\n| --- | --- | --- |\n| `x\\|y` | 2 | 3 |\n",
+  );
+
+  const pipeSrc3 = "| a | b | c |\n| --- | --- | --- |\n| `x\\|y` | 2 | 3 |\n";
+  eq(
+    "removing a column from a table with an escaped pipe keeps the code span",
+    surgicalMerge(pipeSrc3, "| a | c |\n| --- | --- |\n| `x\\|y` | 3 |\n", pipeSrc3),
+    "| a | c |\n| --- | --- |\n| `x\\|y` | 3 |\n",
+  );
+
+  // An unclosed fence at EOF is legal CommonMark — its last line is code,
+  // not a closing fence, and must not be re-emitted under the new body.
+
+  eq(
+    "editing an unclosed fence does not resurrect the old last line",
+    surgicalMerge("```js\nlet a = 1;", "```js\nlet a = 2;\n```\n", "```js\nlet a = 1;\n```\n"),
+    "```js\nlet a = 2;",
+  );
+
+  eq(
+    "editing an unclosed fence keeps a trailing newline",
+    surgicalMerge(
+      "```js\nlet a = 1;\n",
+      "```js\nlet a = 2;\n```\n",
+      "```js\nlet a = 1;\n```\n",
+    ),
+    "```js\nlet a = 2;\n",
+  );
+
   // --------------------------------------------------------------------------
   // Print report
   // --------------------------------------------------------------------------

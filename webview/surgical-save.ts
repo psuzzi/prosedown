@@ -624,14 +624,9 @@ function splitRewrap(
     }
 
     const inner = origMd.slice(srcFrom, srcTo);
-    if (nk.node.type === "text") {
-      out += inner;
-    } else if (visibleOf(nk.node) === inner) {
-      // New marks on unchanged text: use the serialize (settings markers).
-      out += nk.text;
-    } else {
-      out += nk.text;
-    }
+    // Plain text keeps the original bytes; anything else (new marks on
+    // unchanged text included) takes the serialize's settings markers.
+    out += nk.node.type === "text" ? inner : nk.text;
     lastSrc = srcTo;
   }
 
@@ -786,12 +781,36 @@ function splitPipeRow(row: string): {
   leadPipe: boolean;
   trailPipe: boolean;
 } {
-  const leadPipe = /^\s*\|/.test(row);
-  const trailPipe = /\|\s*$/.test(row);
-  let body = row;
-  if (leadPipe) body = body.replace(/^\s*\|/, "");
-  if (trailPipe) body = body.replace(/\|\s*$/, "");
-  return { cells: body.split("|"), leadPipe, trailPipe };
+  // Only an *unescaped* `|` is a cell boundary — GFM writes a literal pipe
+  // inside a cell (including inside a code span) as `\|`. Splitting on it
+  // would shear the cell in half and desync cells from the row's mdast kids.
+  const cuts: number[] = [];
+  for (let i = 0; i < row.length; i++) {
+    if (row[i] === "\\") {
+      i++;
+      continue;
+    }
+    if (row[i] === "|") cuts.push(i);
+  }
+  if (cuts.length === 0) return { cells: [row], leadPipe: false, trailPipe: false };
+  const leadPipe = /^\s*$/.test(row.slice(0, cuts[0]));
+  const trailPipe =
+    cuts.length > (leadPipe ? 1 : 0) &&
+    /^\s*$/.test(row.slice(cuts[cuts.length - 1] + 1));
+  const from = leadPipe ? cuts[0] + 1 : 0;
+  const to = trailPipe ? cuts[cuts.length - 1] : row.length;
+  const inner = cuts.slice(
+    leadPipe ? 1 : 0,
+    trailPipe ? cuts.length - 1 : cuts.length,
+  );
+  const cells: string[] = [];
+  let p = from;
+  for (const c of inner) {
+    cells.push(row.slice(p, c));
+    p = c + 1;
+  }
+  cells.push(row.slice(p, to));
+  return { cells, leadPipe, trailPipe };
 }
 
 function joinPipeRow(parts: {
@@ -1039,23 +1058,32 @@ function mergeCode(
   const oEnd = o.position?.end?.offset;
   if (oStart == null || oEnd == null) return null;
   const raw = origMd.slice(oStart, oEnd);
-  const lines = raw.split("\n");
+  const trailNl = raw.endsWith("\n") ? "\n" : "";
+  const lines = raw.slice(0, raw.length - trailNl.length).split("\n");
   if (lines.length < 2) return null;
   const open = lines[0];
-  const close = lines[lines.length - 1];
   const om = open.match(/^(\s*)(`{3,}|~{3,})(.*)$/);
   if (!om) return null;
   const langChanged = (c?.lang ?? "") !== (n?.lang ?? "");
   const newOpen = langChanged
     ? `${om[1]}${om[2]}${n.lang ?? ""}${n.meta ? ` ${n.meta}` : ""}`
     : open;
-  const cm = close.match(/^(\s*)(`{3,}|~{3,})/);
-  const bodyIndent = cm?.[1] ?? om[1];
+  // A fence left unclosed at EOF is legal CommonMark. Taking the last line as
+  // the closing fence there would re-emit a line of code below the new body.
+  const closeRe = new RegExp(
+    `^\\s*${om[2][0] === "\`" ? "\`" : "~"}{${om[2].length},}\\s*$`,
+  );
+  const close = closeRe.test(lines[lines.length - 1])
+    ? lines[lines.length - 1]
+    : null;
+  const bodyIndent = close?.match(/^(\s*)/)?.[1] ?? om[1];
   const body = String(n.value ?? "")
     .split("\n")
     .map((l: string) => bodyIndent + l)
     .join("\n");
-  return `${newOpen}\n${body}\n${close}`;
+  return close != null
+    ? `${newOpen}\n${body}\n${close}${trailNl}`
+    : `${newOpen}\n${body}${trailNl}`;
 }
 
 function spliceTextLikes(
@@ -1126,12 +1154,10 @@ function stitchKids(
 ): string {
   if (pieces.length === 0) return origMd.slice(parentStart, parentEnd);
   let result = "";
-  const first = pieces[0];
-  if (first.origIdx != null) {
-    result += origMd.slice(parentStart, oKids[first.origIdx].start);
-  } else {
-    result += origMd.slice(parentStart, oKids[0]?.start ?? parentStart);
-  }
+  // Always emit only the container's own prefix (list marker, `>` , …), never
+  // the bytes of leading kids. Anchoring on the first *surviving* kid would
+  // re-emit every kid the user deleted ahead of it.
+  result += origMd.slice(parentStart, oKids[0]?.start ?? parentStart);
   for (let i = 0; i < pieces.length; i++) {
     if (i > 0) {
       const prev = pieces[i - 1];
@@ -1159,10 +1185,16 @@ function stitchKids(
     }
     result += pieces[i].content;
   }
+  // Mirror of the head: the trailing slice starts at the last kid we actually
+  // emitted only when that *is* the last original kid. Otherwise the kids
+  // after it were deleted, and only the container's own suffix survives.
   const last = pieces[pieces.length - 1];
-  if (last.origIdx != null) {
-    result += origMd.slice(oKids[last.origIdx].end, parentEnd);
-  }
+  const lastKidEnd = oKids[oKids.length - 1].end;
+  const tailFrom =
+    last.origIdx != null && oKids[last.origIdx].end >= lastKidEnd
+      ? oKids[last.origIdx].end
+      : lastKidEnd;
+  result += origMd.slice(tailFrom, parentEnd);
   return result;
 }
 
@@ -1535,14 +1567,10 @@ export function surgicalMerge(
   if (out.length === 0) return serialized;
 
   let result = "";
-  const first = out[0];
-  if (first.origStart != null) {
-    result += original.slice(0, first.origStart);
-  } else if (first.fromOriginal && first.origIdx != null) {
-    result += original.slice(0, origBlocks[first.origIdx].start);
-  } else {
-    result += original.slice(0, origBlocks[0].start);
-  }
+  // Everything before the first original block (frontmatter, leading blank
+  // lines) is kept verbatim. Anchoring on the first *surviving* block instead
+  // would re-emit every block the user deleted ahead of it.
+  result += original.slice(0, origBlocks[0].start);
 
   for (let i = 0; i < out.length; i++) {
     if (i > 0) {
@@ -1574,14 +1602,14 @@ export function surgicalMerge(
     result += out[i].content;
   }
 
+  // Same rule at the tail: only the last original block carries the document
+  // tail with it. If we stopped earlier, the blocks after it were deleted and
+  // only the trailing whitespace survives.
   const last = out[out.length - 1];
-  if (last.origEnd != null) {
-    result += original.slice(last.origEnd);
-  } else if (last.fromOriginal && last.origIdx != null) {
-    result += original.slice(origBlocks[last.origIdx].end);
-  } else if (original.endsWith("\n") && !result.endsWith("\n")) {
-    result += "\n";
-  }
+  const docEnd = origBlocks[origBlocks.length - 1].end;
+  const lastEnd =
+    last.origEnd ?? (last.origIdx != null ? origBlocks[last.origIdx].end : null);
+  result += original.slice(lastEnd != null && lastEnd >= docEnd ? lastEnd : docEnd);
 
   return result;
 }
