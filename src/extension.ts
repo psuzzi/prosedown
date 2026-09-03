@@ -153,6 +153,30 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Deliberate no-op that exists only to *win* a keybinding (#43).
+  //
+  // A webview cannot stop its keystrokes reaching the workbench: VS Code's
+  // webview preload forwards every keydown to the host unconditionally — it
+  // does not check `defaultPrevented` — so `preventDefault()` inside the
+  // editor cannot help. The only lever is the keybinding resolver, where an
+  // extension's binding (weight 400) outranks a workbench default (200).
+  //
+  // Cmd/Ctrl+B is bound to this in package.json so Tiptap's bold (applied in
+  // the webview before the key is ever forwarded) no longer *also* triggers
+  // `workbench.action.toggleSidebarVisibility`, which is bound to the same
+  // chord with no `when` clause. Doing anything here would double-apply bold.
+  //
+  // The `when` clause pairs `activeCustomEditorId` with `editorAreaFocus` so
+  // the shadowing is limited to keystrokes originating inside the editor
+  // area; with focus in the side bar or panel, Cmd/Ctrl+B still toggles the
+  // side bar as usual. `editorAreaFocus` requires VS Code >= 1.124 and fails
+  // closed (unknown key -> falsy -> binding never fires) on older builds.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("prosedown.noop", () => {
+      /* intentionally empty — see above */
+    })
+  );
+
   // Factory reset — wipes all settings + the first-run consent flag so
   // settings revert to defaults and the welcome modal fires again on
   // the next file open. Confirms before applying.
