@@ -1098,6 +1098,13 @@ html, body, #root {
   color: var(--vscode-descriptionForeground, #888);
 }
 
+.settings-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
 .settings-row {
   display: flex;
   align-items: center;

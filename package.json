@@ -172,9 +172,9 @@
       "properties": {
         "prosedown.autoSave": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "order": 1,
-          "markdownDescription": "Save the file silently on first open to persist the normalization round-trip (md → html → md). Subsequent edits follow VS Code's own `#files.autoSave#` / manual-save behavior."
+          "markdownDescription": "Deprecated no-op. Opening a file no longer rewrites or auto-saves it. Edits follow VS Code's own `#files.autoSave#` / manual save, and only the top-level blocks the user changed are rewritten."
         },
         "prosedown.bullet": {
           "type": "string",

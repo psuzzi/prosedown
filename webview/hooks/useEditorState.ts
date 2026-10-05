@@ -144,7 +144,8 @@ export function useEditorState({
             frontmatterRef.current = frontmatter;
             setFrontmatter(frontmatter);
             const html = await markdownToHtml(noFm, baseUri.current);
-            editor.commands.setContent(html);
+            // Don't fire `update` on load — opening must not serialize or save.
+            editor.commands.setContent(html, { emitUpdate: false });
             // Place the caret: restore the last-known position for this
             // file if we have one, otherwise drop it inside the first
             // heading (usually the title). Falls back to doc start.
