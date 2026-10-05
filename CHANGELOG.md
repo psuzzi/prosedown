@@ -2,6 +2,8 @@
 
 ## 1.0.x
 
+- Fix: **The editor no longer turns file names and bare domains into links.** Typing or dropping `README.md`, `src/notes.md`, `foo.com` or `a.io` made a link out of them (`.md` happens to be a country's top-level domain), although the saved file, GitHub and the next reload all treat them as plain text. The editor now auto-links exactly what GitHub-flavoured markdown auto-links: `www.…`, `http(s)://…` and email addresses. An automatic link is also its own undo step, so Cmd/Ctrl+Z right after one removes the link and keeps the text — visible once undo reaches the editor ([#80](https://github.com/psuzzi/prosedown/issues/80)). There is deliberately no setting to switch auto-linking off: what remains auto-linked is a link everywhere the file is read. ([#91](https://github.com/psuzzi/prosedown/issues/91), [#6](https://github.com/psuzzi/prosedown/issues/6))
+
 - Fix: **Editing a table no longer resets its column alignment.** A table written with `:--`, `--:` or `:-:` in its separator row came back with plain `---` after any edit to it, so right-aligned and centred columns silently became left-aligned. Alignment now survives the round-trip, and the editor keeps it on each cell. ([#63](https://github.com/psuzzi/prosedown/issues/63))
 - Fix: **`&` is no longer saved as `\&`.** URLs with a query string (`?a=1&b=2`, typical of badge images) and names like `AT&T` gained a backslash in any block you edited. The escape is now kept only where it changes meaning, in front of a character reference such as `&copy;`. ([#46](https://github.com/psuzzi/prosedown/issues/46))
 
