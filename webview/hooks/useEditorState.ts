@@ -6,7 +6,7 @@ import {
   htmlToMarkdown,
   htmlToMarkdownSync,
 } from "./useVSCodeSync";
-import { extractFrontmatter, prependFrontmatter } from "../frontmatter";
+import { extractFrontmatter } from "../frontmatter";
 import { mergeSettings, type ProsedownSettings } from "../settings";
 import { applySerialized, createBaseline, type Baseline } from "../surgical-save";
 import { vscodeApi, isBrowserMode } from "../vscode-api";
@@ -190,9 +190,12 @@ export function useEditorState({
           const { content: noFm, frontmatter } = extractFrontmatter(
             msg.content,
           );
+          const html = await markdownToHtml(noFm, baseUri.current);
+          // Body and frontmatter switch together, after the await: a save
+          // finishing in between must not pair the old body with the new
+          // frontmatter.
           frontmatterRef.current = frontmatter;
           setFrontmatter(frontmatter);
-          const html = await markdownToHtml(noFm, baseUri.current);
           // setContent resets the ProseMirror selection to the doc end.
           // Snapshot the caret before replacing content and restore it
           // (clamped to the new doc size) so external updates — e.g. VS
@@ -338,10 +341,9 @@ export function useEditorState({
     const frontmatter = frontmatterRef.current;
     if (next.body === saved.body && frontmatter === saved.frontmatter) return;
     savedRef.current = { body: next.body, frontmatter, html };
-    vscodeApi.postMessage({
-      type: "edit",
-      content: prependFrontmatter(next.body, frontmatter),
-    });
+    // Plain concatenation: the body carries its own leading blank line, and
+    // adding one here would change a file that has none.
+    vscodeApi.postMessage({ type: "edit", content: frontmatter + next.body });
   }, [editor, settingsRef]);
 
   const handleUpdate = useCallback(() => {
@@ -354,7 +356,7 @@ export function useEditorState({
         setStatus(null);
       } catch (err: any) {
         setStatus(`Save error: ${err?.message || String(err)}`);
-        console.error("[prosedown] htmlToMarkdown failed:", err);
+        console.error("[prosedown] save failed:", err);
       }
     }, 300);
   }, [editor, sync]);
@@ -449,7 +451,7 @@ export function useEditorState({
           : html === saved.html
             ? saved.body
             : serialized;
-      return prependFrontmatter(body, frontmatterRef.current);
+      return frontmatterRef.current + body;
     } catch {
       return "";
     }

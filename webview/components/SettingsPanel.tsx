@@ -41,7 +41,7 @@ export function SettingsPanel({
             <p className="settings-note">
               Opening a file never rewrites it. Only top-level blocks you
               edit are serialized; everything else stays byte-identical.
-              Disk writes follow VS Code&apos;s own auto-save / Cmd+S.
+              Disk writes follow VS Code&apos;s own auto-save / manual save.
             </p>
           </section>
 

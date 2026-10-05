@@ -58,14 +58,16 @@ const RESYNC = 8;
 /**
  * Pair each stretch of `body` with the stretch of `canon` it serializes to.
  * Most blocks pair 1:1. Where the serializer drops, splits or merges blocks,
- * the unmatched blocks on both sides form one region. A block it drops
- * entirely (raw HTML, a comment, a link definition) belongs to no region: it
- * sits in the gap between two, and gaps are never rewritten.
+ * the unmatched blocks on both sides form one region. Blocks it always drops
+ * (raw HTML, comments, link definitions) belong to no region: they sit in the
+ * gap between two, and gaps are never rewritten.
  */
 export function createBaseline(body: string, canon: string): Baseline {
-  // Link definitions never survive serialization (links come back inline), so
-  // they are never part of a region.
-  const B = blocksOf(body).filter((b) => b.type !== "definition");
+  // Raw HTML and link definitions never survive serialization (HTML is
+  // dropped, links come back inline), so they are never part of a region.
+  const B = blocksOf(body).filter(
+    (b) => b.type !== "html" && b.type !== "definition",
+  );
   const C = blocksOf(canon);
   // Letters and digits only: blind to markers, escapes, padding and wrapping.
   const key = (md: string, b: Block) =>
@@ -107,13 +109,16 @@ export function createBaseline(body: string, canon: string): Baseline {
   return { body, canon, regions };
 }
 
-/** A baseline for text the serializer produced itself: every block maps to itself. */
-function identityBaseline(md: string): Baseline {
+/**
+ * A baseline for text the serializer produced itself: every block maps to
+ * itself. `lead` is original text to keep in front of it.
+ */
+function identityBaseline(md: string, lead = ""): Baseline {
   const regions = blocksOf(md).map(({ start, end }) => ({
-    body: { start, end },
+    body: { start: lead.length + start, end: lead.length + end },
     canon: { start, end },
   }));
-  return { body: md, canon: md, regions };
+  return { body: lead + md, canon: md, regions };
 }
 
 /**
@@ -124,7 +129,13 @@ export function applySerialized(base: Baseline, next: string): Baseline {
   const { body, canon, regions } = base;
   if (next === canon) return base;
   const R = regions.length;
-  if (R === 0) return identityBaseline(next);
+  const eol = body.includes("\r\n") ? "\r\n" : "\n";
+  // Nothing the editor could show (an empty file, or only dropped blocks):
+  // whatever was typed goes after it.
+  if (R === 0) {
+    const kept = body.trimEnd();
+    return identityBaseline(next, kept ? kept + eol + eol : "");
+  }
 
   // 1. The span of the serialize that changed, by scanning from both ends.
   const max = Math.min(canon.length, next.length);
@@ -148,91 +159,121 @@ export function applySerialized(base: Baseline, next: string): Baseline {
   while (b > a && regions[b - 1].canon.start >= canon.length - s) b--;
   b = Math.min(R, b + 1);
 
-  // 3. Parse only that window of the new serialize.
-  const from = a === 0 ? 0 : regions[a].canon.start;
-  const to = b < R ? regions[b].canon.start + delta : next.length;
-  const win = next.slice(from, to);
-  let nb = blocksOf(win);
+  // 3. Parse only that window of the new serialize (offsets into `next`).
+  const windowBlocks = () => {
+    const from = a === 0 ? 0 : regions[a].canon.start;
+    const to = b < R ? regions[b].canon.start + delta : next.length;
+    return blocksOf(next.slice(from, to)).map((blk) => ({
+      ...blk,
+      start: blk.start + from,
+      end: blk.end + from,
+    }));
+  };
+  let nb = windowBlocks();
 
   // 4. Give the margins back where they turn out to be untouched.
-  const boundary = (offset: number, edge: "start" | "end") =>
-    nb.findIndex((blk) => blk[edge] + from === offset);
   if (a < b && regions[a].canon.end <= p) {
-    const first = boundary(regions[a].canon.start, "start");
-    const lastIdx = boundary(regions[a].canon.end, "end");
-    if (first === 0 && lastIdx >= 0) {
-      nb = nb.slice(lastIdx + 1);
+    const last = nb.findIndex((blk) => blk.end === regions[a].canon.end);
+    if (last >= 0 && nb[0].start === regions[a].canon.start) {
+      nb = nb.slice(last + 1);
       a++;
     }
   }
   if (a < b && regions[b - 1].canon.start >= canon.length - s) {
-    const first = boundary(regions[b - 1].canon.start + delta, "start");
-    const lastIdx = boundary(regions[b - 1].canon.end + delta, "end");
-    if (first >= 0 && lastIdx === nb.length - 1) {
+    const first = nb.findIndex((blk) => blk.start === regions[b - 1].canon.start + delta);
+    if (first >= 0 && nb[nb.length - 1].end === regions[b - 1].canon.end + delta) {
       nb = nb.slice(0, first);
       b--;
     }
   }
 
-  // 5. Splice the serializer's text for those blocks into the original bytes.
-  //    The gaps on either side of the window stay: they hold the original
-  //    spacing and any block the serializer drops.
-  const eol = body.includes("\r\n") ? "\r\n" : "\n";
+  // 5–6. Splice, and check the seam. New text can change how a kept
+  //      neighbour parses (a list swallowing an indented block); when it
+  //      does, take one more region on each side and try again.
+  for (;;) {
+    const spliced = splice(base, next, a, b, nb, eol);
+    if (spliced) return spliced;
+    if (a === 0 && b === R) return identityBaseline(next);
+    a = Math.max(0, a - 1);
+    b = Math.min(R, b + 1);
+    nb = windowBlocks();
+  }
+}
+
+/**
+ * Replace regions [a, b) of the baseline with the blocks `nb` of `next`.
+ * Returns null if the kept neighbours would no longer parse as the blocks
+ * they were.
+ */
+function splice(
+  { body, canon, regions }: Baseline,
+  next: string,
+  a: number,
+  b: number,
+  nb: Block[],
+  eol: string,
+): Baseline | null {
+  const R = regions.length;
   const toEol = (t: string) => (eol === "\n" ? t : t.replace(/\n/g, eol));
   // Spacing next to new text must hold a blank line, or the blocks would fuse.
   const blank = (ws: string) => (/\n[ \t]*\r?\n/.test(ws) ? ws : eol + eol);
+  // Gaps hold the original spacing and any block the serializer drops. The
+  // gaps on either side of the window stay as they are; dropped blocks from
+  // gaps inside it are kept too, after the new text.
   const gap = (r: number) => body.slice(regions[r - 1].body.end, regions[r].body.start);
   const before = a > 0 && a < R ? gap(a) : "";
   const after = b > a && b < R ? gap(b) : "";
+  const dropped: string[] = [];
+  for (let r = a + 1; r <= b && r < R; r++) {
+    if (gap(r).trim()) dropped.push(gap(r).trim());
+  }
 
   const head = body.slice(0, a > 0 ? regions[a - 1].body.end : regions[0].body.start);
   const tail = body.slice(b < R ? regions[b].body.start : regions[R - 1].body.end);
 
   // Between the kept head and tail: a dropped block from the gap in front,
-  // the new blocks, a dropped block from the gap behind.
+  // the new blocks, the dropped blocks from the gaps inside and behind.
   const left = a > 0 ? blank(/^\s*/.exec(before)![0]) : "";
   const right = b < R ? blank(/\s*$/.exec(after || before)![0]) : "";
   let inner = before.trim();
   const added: Region[] = [];
   nb.forEach((blk, k) => {
-    if (inner) inner += k > 0 ? toEol(win.slice(nb[k - 1].end, blk.start)) : eol + eol;
+    if (inner) inner += k > 0 ? toEol(next.slice(nb[k - 1].end, blk.start)) : eol + eol;
     const start = head.length + left.length + inner.length;
-    inner += toEol(win.slice(blk.start, blk.end));
+    inner += toEol(next.slice(blk.start, blk.end));
     added.push({
       body: { start, end: head.length + left.length + inner.length },
-      canon: { start: from + blk.start, end: from + blk.end },
+      canon: { start: blk.start, end: blk.end },
     });
   });
-  if (after.trim()) inner += (inner ? eol + eol : "") + after.trim();
+  for (const d of dropped) inner += (inner ? eol + eol : "") + d;
   // Nothing left in the window: one spacing joins head and tail, none at an edge.
   const mid = inner ? left + inner + right : a > 0 ? right : "";
   const newBody = head + mid + tail;
+  const grown = newBody.length - body.length;
 
-  // 6. The kept neighbours must still parse as the blocks they were — new
-  //    text can capture what follows it (a list swallowing an indented block).
-  //    If the seam does not hold, save the plain serialize instead.
   const lo = a > 0 ? regions[a - 1].body.start : 0;
-  const hiOld = b < R ? regions[b].body.end : body.length;
+  const hi = b < R ? regions[b].body.end : body.length;
   const types = (md: string) => blocksOf(md).map((x) => x.type);
   const expected = [
     ...types(body.slice(lo, head.length) + before),
     ...nb.map((x) => x.type),
-    ...types(after + body.slice(body.length - tail.length, hiOld)),
+    ...types(dropped.join("\n\n")),
+    ...types(body.slice(body.length - tail.length, hi)),
   ];
-  const actual = types(newBody.slice(lo, hiOld + newBody.length - body.length));
-  if (expected.join() !== actual.join()) return identityBaseline(next);
+  if (expected.join() !== types(newBody.slice(lo, hi + grown)).join()) return null;
 
-  const shift = (r: Region, dBody: number, dCanon: number): Region => ({
-    body: { start: r.body.start + dBody, end: r.body.end + dBody },
-    canon: { start: r.canon.start + dCanon, end: r.canon.end + dCanon },
-  });
+  const delta = next.length - canon.length;
   return {
     body: newBody,
     canon: next,
     regions: [
       ...regions.slice(0, a),
       ...added,
-      ...regions.slice(b).map((r) => shift(r, newBody.length - body.length, delta)),
+      ...regions.slice(b).map((r) => ({
+        body: { start: r.body.start + grown, end: r.body.end + grown },
+        canon: { start: r.canon.start + delta, end: r.canon.end + delta },
+      })),
     ],
   };
 }

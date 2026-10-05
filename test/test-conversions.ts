@@ -1171,6 +1171,35 @@ async function run() {
   );
   await surgicalCase("serializer splits one block (two images) and drops another", "<!-- c -->\n\nA word.\n\n![a](a.png) ![b](b.png)\n\nTail.\n", "<!-- c -->\n\nA word.\n\n![a](a.png) ![b](b.png)\n\nTails.\n");
 
+  await surgicalCase("dropped block before a paragraph the serializer restyles (entity)", "Intro.\n\n<!-- keep -->\n\nAT&amp;T word.\n", "Intro.\n\n<!-- keep -->\n\nAT&amp;T words.\n", "Intro.\n\n<!-- keep -->\n\nAT\\&T words.\n");
+  await surgicalCase(
+    "leading HTML block, then a reference link",
+    "<p align=\"center\"><img src=\"logo.png\"></p>\n\nMade by [me][me] word.\n\n[me]: https://x.y\n",
+    "<p align=\"center\"><img src=\"logo.png\"></p>\n\nMade by [me][me] words.\n\n[me]: https://x.y\n",
+    "<p align=\"center\"><img src=\"logo.png\"></p>\n\nMade by [me](https://x.y) words.\n\n[me]: https://x.y\n",
+  );
+  await surgicalCase("comment before a paragraph with inline HTML", "# T\n\n<!-- lint-disable -->\n\nLine a<br>line b word.\n", "# T\n\n<!-- lint-disable -->\n\nLine a<br>line b words.\n", "# T\n\n<!-- lint-disable -->\n\nLine aline b words.\n");
+  await surgicalCase("comment kept when the next paragraph resyncs late", "# T\n\n<!-- keep -->\n\nPress <kbd>K</kbd> word.\n\nEnd.\n", "# T\n\n<!-- keep -->\n\nPress <kbd>K</kbd> words.\n\nEnd.\n", "# T\n\n<!-- keep -->\n\nPress K words.\n\nEnd.\n");
+  {
+    const html = Array.from({ length: 10 }, (_, i) => `<p align="center">h${i}</p>`).join("\n\n");
+    await surgicalCase("a long run of HTML blocks", `${html}\n\nAlpha.\n\nBeta word.\n`, `${html}\n\nAlpha.\n\nBeta words.\n`);
+  }
+  await surgicalCase("append after trailing HTML keeps the order", "A.\n\n<!-- c -->\n\n<img src=\"b.png\" width=\"10\">\n\nAT&amp;T sign.\n", "A.\n\n<!-- c -->\n\n<img src=\"b.png\" width=\"10\">\n\nAT&amp;T sign.\n\nNew.\n");
+  await surgicalCase("file with only dropped blocks: typed text is added after them", "<!-- todo -->\n\n[a]: https://x.y\n", "<!-- todo -->\n\n[a]: https://x.y\n\nHello.\n");
+  await surgicalCase(
+    "seam check widens the window instead of dropping HTML elsewhere",
+    "<!-- license -->\n\n# T\n\n<img src=\"logo.png\">\n\nIntro.\n\nX\n\n    code\n",
+    "<!-- license -->\n\n# T\n\n<img src=\"logo.png\">\n\nIntro.\n\n- X\n\n    code\n",
+    "<!-- license -->\n\n# T\n\n<img src=\"logo.png\">\n\nIntro.\n\n- X\n\n  code\n",
+  );
+
+  await surgicalCase(
+    "HTML between two blocks rewritten in the same save is kept",
+    "Intro.\n\n+ x\n+ y\n\n<img src=\"b.png\" width=\"10\">\n\n* a\n* b\n\nEnd.\n",
+    "Intro.\n\nSame.\n\n- a\n- b\n\n<img src=\"b.png\" width=\"10\">\n\nEnd.\n",
+  );
+  await surgicalCase("merging two paragraphs keeps the comment that was between them", "A.\n\n<!-- one -->\n\nB.\n\nC.\n", "A. B.\n\nC.\n", "A. B.\n\n<!-- one -->\n\nC.\n");
+
   // --- inserting and deleting blocks ---
   await surgicalCase("delete first block", "A.\n\nB.\n\nC.\n", "B.\n\nC.\n");
   await surgicalCase("delete middle block", "A.\n\nB.\n\nC.\n", "A.\n\nC.\n");

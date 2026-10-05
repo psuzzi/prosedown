@@ -73,8 +73,8 @@ When you touch any of these, add/update a test case in `test/test-conversions.ts
 
 The pipeline above produces a **full re-serialize** of the document. That is never what is saved. `webview/surgical-save.ts` uses it only to locate the edit, and writes the file's own markdown back with just the edited top-level blocks replaced:
 
-- **`createBaseline(body, canon)`** pairs each stretch of the file (`body`) with the stretch of the serializer's output for the unedited document (`canon`) — a list of *regions*. Blocks the serializer drops (raw HTML, comments, link definitions) belong to no region; they sit in the gaps, and gaps are never rewritten.
-- **`applySerialized(baseline, next)`** scans `canon` and the new serialize `next` from both ends, parses only the span that differs, and splices the serializer's text for it into `body`. It returns the next baseline; its `body` is the markdown to save. If the new text would change how a kept neighbour parses, it returns the plain serialize instead.
+- **`createBaseline(body, canon)`** pairs each stretch of the file (`body`) with the stretch of the serializer's output for the unedited document (`canon`) — a list of *regions*. Blocks the serializer always drops (raw HTML, comments, link definitions) belong to no region; they sit in the gaps between regions, and are carried over even when the regions around them are rewritten.
+- **`applySerialized(baseline, next)`** scans `canon` and the new serialize `next` from both ends, parses only the span that differs, and splices the serializer's text for it into `body`. It returns the next baseline; its `body` is the markdown to save. If the new text would change how a kept neighbour parses, it widens the rewritten window one region at a time until the seam holds.
 
 `useEditorState.ts` holds the state: `savedRef` (body + frontmatter + the editor HTML they correspond to) and `baselineRef` (built on the first edit, rebuilt when the settings object changes). Opening a file loads with `emitUpdate: false` and posts nothing.
 
