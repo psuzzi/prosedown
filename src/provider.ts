@@ -244,17 +244,7 @@ export class ProsedownProvider implements vscode.CustomTextEditorProvider {
 
     let pendingWebviewEdits = 0;
 
-    // The first edit the webview emits after init is the normalization
-    // round-trip (md → html → md). We save it silently so users don't see
-    // a surprise dirty state on open, then hand off: every subsequent edit
-    // follows VS Code's own save behavior (`files.autoSave`, Cmd+S, etc.)
-    // so we don't fight the user's configured save cadence.
-    let firstEditPending = true;
-
-    // First-run consent: the very first file opened post-install must not
-    // be silently rewritten before the user has chosen how to handle
-    // normalization. Snapshot the flag at start so a "Disable all" choice
-    // mid-session still suppresses this open's silent save.
+    // First-run consent: snapshot so the welcome prompt fires only once.
     const consentShownAtStart =
       this.context.globalState.get<boolean>(CONSENT_SHOWN_KEY) === true;
 
@@ -371,20 +361,6 @@ export class ProsedownProvider implements vscode.CustomTextEditorProvider {
           newContent,
         );
         await vscode.workspace.applyEdit(edit);
-        if (firstEditPending) {
-          firstEditPending = false;
-          const autoSave = vscode.workspace
-            .getConfiguration(CONFIG_NAMESPACE)
-            .get<boolean>("autoSave", true);
-          if (consentShownAtStart && autoSave) {
-            try {
-              await document.save();
-            } catch {
-              // Transient save failures (read-only FS, permission) leave
-              // the doc dirty; the user can retry with Cmd+S.
-            }
-          }
-        }
       }
     });
 

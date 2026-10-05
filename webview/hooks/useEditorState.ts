@@ -6,8 +6,9 @@ import {
   htmlToMarkdown,
   htmlToMarkdownSync,
 } from "./useVSCodeSync";
-import { extractFrontmatter, prependFrontmatter } from "../frontmatter";
+import { extractFrontmatter } from "../frontmatter";
 import { mergeSettings, type ProsedownSettings } from "../settings";
+import { applySerialized, createBaseline, type Baseline } from "../surgical-save";
 import { vscodeApi, isBrowserMode } from "../vscode-api";
 
 // A window `focus` this soon after an in-editor pointerdown means the refocus
@@ -57,6 +58,17 @@ export function useEditorState({
   const docFolderPath = useRef("");
   const filePath = useRef("");
   const frontmatterRef = useRef("");
+  // Surgical save (see ../surgical-save.ts). `savedRef` is the document as
+  // the host has it: the markdown body, its frontmatter, and the editor HTML
+  // that body corresponds to. It is replaced, never mutated, so its identity
+  // tells an in-flight save that the document moved on underneath it.
+  const savedRef = useRef({ body: "", frontmatter: "", html: "" });
+  // Built from `savedRef` on the first edit, and again if the settings
+  // object changes — a baseline only holds for the settings it was built with.
+  const baselineRef = useRef<{
+    baseline: Baseline;
+    settings: ProsedownSettings;
+  } | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isReadonly = useRef(false);
 
@@ -144,7 +156,9 @@ export function useEditorState({
             frontmatterRef.current = frontmatter;
             setFrontmatter(frontmatter);
             const html = await markdownToHtml(noFm, baseUri.current);
-            editor.commands.setContent(html);
+            // Don't fire `update` on load — opening must not serialize or save.
+            editor.commands.setContent(html, { emitUpdate: false });
+            savedRef.current = { body: noFm, frontmatter, html: editor.getHTML() };
             // Place the caret: restore the last-known position for this
             // file if we have one, otherwise drop it inside the first
             // heading (usually the title). Falls back to doc start.
@@ -176,9 +190,12 @@ export function useEditorState({
           const { content: noFm, frontmatter } = extractFrontmatter(
             msg.content,
           );
+          const html = await markdownToHtml(noFm, baseUri.current);
+          // Body and frontmatter switch together, after the await: a save
+          // finishing in between must not pair the old body with the new
+          // frontmatter.
           frontmatterRef.current = frontmatter;
           setFrontmatter(frontmatter);
-          const html = await markdownToHtml(noFm, baseUri.current);
           // setContent resets the ProseMirror selection to the doc end.
           // Snapshot the caret before replacing content and restore it
           // (clamped to the new doc size) so external updates — e.g. VS
@@ -194,6 +211,8 @@ export function useEditorState({
           // host → dirty-after-save. The host just told us the content;
           // echoing it back as an edit is redundant.
           editor.commands.setContent(html, { emitUpdate: false });
+          savedRef.current = { body: noFm, frontmatter, html: editor.getHTML() };
+          baselineRef.current = null;
           const maxPos = editor.state.doc.content.size;
           editor.commands.setTextSelection({
             from: Math.min(from, maxPos),
@@ -296,29 +315,51 @@ export function useEditorState({
       window.removeEventListener("btrmk:showImageDialog", handler);
   }, []);
 
-  // Sync: editor changes → extension host
+  // Sync: editor changes → extension host. Only the blocks that changed since
+  // `savedRef` are rewritten; the rest of the file keeps its own bytes.
+  const sync = useCallback(async (): Promise<void> => {
+    if (!editor) return;
+    const saved = savedRef.current;
+    const settings = settingsRef.current;
+    const html = editor.getHTML();
+    const serialize = (h: string) =>
+      htmlToMarkdown(h, baseUri.current, docFolderPath.current, settings);
+
+    const cached = baselineRef.current;
+    const baseline =
+      cached?.settings === settings
+        ? cached.baseline
+        : createBaseline(saved.body, await serialize(saved.html));
+    const next = applySerialized(baseline, await serialize(html));
+    // The document was reloaded or the settings changed while we were
+    // serializing: what we computed is against a stale baseline. Start over.
+    if (savedRef.current !== saved || settingsRef.current !== settings) {
+      return sync();
+    }
+
+    baselineRef.current = { baseline: next, settings };
+    const frontmatter = frontmatterRef.current;
+    if (next.body === saved.body && frontmatter === saved.frontmatter) return;
+    savedRef.current = { body: next.body, frontmatter, html };
+    // Plain concatenation: the body carries its own leading blank line, and
+    // adding one here would change a file that has none.
+    vscodeApi.postMessage({ type: "edit", content: frontmatter + next.body });
+  }, [editor, settingsRef]);
+
   const handleUpdate = useCallback(() => {
     if (!initialized.current || !editor) return;
     if (isReadonly.current) return;
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(async () => {
       try {
-        const html = editor.getHTML();
-        let markdown = await htmlToMarkdown(
-          html,
-          baseUri.current,
-          docFolderPath.current,
-          settingsRef.current,
-        );
-        markdown = prependFrontmatter(markdown, frontmatterRef.current);
-        vscodeApi.postMessage({ type: "edit", content: markdown });
+        await sync();
         setStatus(null);
       } catch (err: any) {
         setStatus(`Save error: ${err?.message || String(err)}`);
-        console.error("[prosedown] htmlToMarkdown failed:", err);
+        console.error("[prosedown] save failed:", err);
       }
     }, 300);
-  }, [editor, settingsRef]);
+  }, [editor, sync]);
 
   useEffect(() => {
     if (!editor) return;
@@ -395,13 +436,22 @@ export function useEditorState({
     if (!editor || !diffVisible) return "";
     try {
       const html = editor.getHTML();
-      const markdown = htmlToMarkdownSync(
+      const serialized = htmlToMarkdownSync(
         html,
         baseUri.current,
         docFolderPath.current,
         settingsRef.current,
       );
-      return prependFrontmatter(markdown, frontmatterRef.current);
+      // Show what a save would write, not the full re-serialize.
+      const saved = savedRef.current;
+      const cached = baselineRef.current;
+      const body =
+        cached?.settings === settingsRef.current
+          ? applySerialized(cached.baseline, serialized).body
+          : html === saved.html
+            ? saved.body
+            : serialized;
+      return frontmatterRef.current + body;
     } catch {
       return "";
     }

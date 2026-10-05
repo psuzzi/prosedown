@@ -2,7 +2,7 @@
   "name": "prosedown",
   "displayName": "Prosedown",
   "description": "Rich, block-based WYSIWYG markdown editing in VS Code — tables, math, Mermaid, and rich diffs.",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "publisher": "psuzzi",
   "license": "MIT",
   "repository": {
@@ -172,9 +172,9 @@
       "properties": {
         "prosedown.autoSave": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "order": 1,
-          "markdownDescription": "Save the file silently on first open to persist the normalization round-trip (md → html → md). Subsequent edits follow VS Code's own `#files.autoSave#` / manual-save behavior."
+          "markdownDeprecationMessage": "No longer used. Opening a file never rewrites or saves it. Saving follows VS Code's own `#files.autoSave#` / manual save, and only the blocks you edited are rewritten."
         },
         "prosedown.bullet": {
           "type": "string",

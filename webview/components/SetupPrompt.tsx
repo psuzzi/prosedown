@@ -45,10 +45,11 @@ export function SetupPrompt({
         </div>
         <div className="setup-prompt-body">
           <p>
-            Prosedown reformats files on open. Compacts lists, unifies
-            bullet markers, and similar tidy-ups. Then, it gets out of your way.
+            Prosedown never changes a file just by opening it. When you edit,
+            only the blocks you touch are saved back, tidied to your markdown
+            style: bullet markers, list spacing, table padding.
           </p>
-          <p>Pick how you'd like to handle the reformatting.</p>
+          <p>Pick how you'd like those blocks to be written.</p>
           <p>You can change any of these later from the ⚙ settings panel.</p>
         </div>
         <div className="setup-prompt-actions">

@@ -9,6 +9,7 @@
 
 import { readFileSync } from "fs";
 import { roundTrip } from "./pipeline";
+import { applySerialized, createBaseline } from "../webview/surgical-save";
 
 const file = process.argv[2] || "test/test.md";
 const input = readFileSync(file, "utf-8");
@@ -42,6 +43,14 @@ function showDiff(input: string, output: string) {
   console.log(`Testing round-trip: ${file}\n`);
   const output = await roundTrip(input);
   const diffs = showDiff(input, output);
+
+  // Saving without editing must hand back the file's own bytes.
+  if (applySerialized(createBaseline(input, output), output).body !== input) {
+    console.log("\n\x1b[31m✗ Surgical no-edit save changed the file\x1b[0m");
+    process.exit(1);
+  }
+  console.log("\x1b[32m✓ Surgical no-edit save is identity\x1b[0m");
+
   console.log("\n--- Full output ---\n");
   console.log(output);
   if (diffs > 0) process.exit(1);

@@ -69,6 +69,17 @@ The html→md save path is a **tree-based** pipeline (epic #78): `buildMdPipelin
 
 When you touch any of these, add/update a test case in `test/test-conversions.ts` in the matching category. **A new normalization belongs as an mdast transform in `buildMdPipeline`** (structure/fence-info) — not a text pass — unless it merely adjusts remark-stringify's escaping, which stays as a fence-aware pass in `normalizeMarkdown`. Every fence-relevant pass needs a "shown inside a fence → left verbatim" test.
 
+## Surgical save (what actually gets written)
+
+The pipeline above produces a **full re-serialize** of the document. That is never what is saved. `webview/surgical-save.ts` uses it only to locate the edit, and writes the file's own markdown back with just the edited top-level blocks replaced:
+
+- **`createBaseline(body, canon)`** pairs each stretch of the file (`body`) with the stretch of the serializer's output for the unedited document (`canon`) — a list of *regions*. Blocks the serializer always drops (raw HTML, comments, link definitions) belong to no region; they sit in the gaps between regions, and are carried over even when the regions around them are rewritten.
+- **`applySerialized(baseline, next)`** scans `canon` and the new serialize `next` from both ends, parses only the span that differs, and splices the serializer's text for it into `body`. It returns the next baseline; its `body` is the markdown to save. If the new text would change how a kept neighbour parses, it widens the rewritten window one region at a time until the seam holds.
+
+`useEditorState.ts` holds the state: `savedRef` (body + frontmatter + the editor HTML they correspond to) and `baselineRef` (built on the first edit, rebuilt when the settings object changes). Opening a file loads with `emitUpdate: false` and posts nothing.
+
+The module is pure (no DOM) and shared by production and tests — there is no mirror to keep in sync. Its invariants, all in test category R: no edit → byte-identical file; an edit changes only its block; **reopening what was saved gives exactly the document the editor holds** (the sweep over `test.md` / `example.md`). Any change to the pipeline's output is automatically covered by that sweep; run category R when touching `surgical-save.ts` or the sync path.
+
 ## Adding a new conversion test
 
 In `test/test-conversions.ts`:
@@ -105,7 +116,7 @@ Three write paths feed the same store:
 - the in-app `SettingsPanel` (writes User scope via `config.update(...)`)
 - programmatic edits
 
-`onDidChangeConfiguration` listeners in `src/provider.ts` and `src/diffPanel.ts` push fresh settings to every open webview as `settingsUpdated`. The schema in `package.json` MUST stay in sync with `ProsedownSettings`, `DEFAULT_SETTINGS`, and `SETTING_KEYS` in `webview/settings.ts` — adding a new setting means updating all four places.
+`onDidChangeConfiguration` listeners in `src/provider.ts` and `src/diffPanel.ts` push fresh settings to every open webview as `settingsUpdated`. The schema in `package.json` MUST stay in sync with `ProsedownSettings`, `DEFAULT_SETTINGS`, and `SETTING_KEYS` in `webview/settings.ts` — adding a new setting means updating all four places. The one exception is the retired `prosedown.autoSave`, which stays in `package.json` only, with a `markdownDeprecationMessage`, so existing user values are flagged instead of silently unknown.
 
 A one-time migration in `src/extension.ts` (`migrateLegacySettings`) copies pre-2.3.5 globalState settings into User-scope config on first activation.
 

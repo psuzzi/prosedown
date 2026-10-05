@@ -53,15 +53,6 @@ export interface ProsedownSettings {
   /** Default diff view mode: source (line diff) or rendered (HTML diff). */
   diffMode: "source" | "rendered";
 
-  // --- saving ---
-  /**
-   * Save the file silently on open to persist the normalization round-trip
-   * (md → html → md) that the rich editor applies. Only fires once per
-   * open; subsequent edits follow VS Code's own `files.autoSave` /
-   * manual-save behavior so we don't fight the user's configured cadence.
-   */
-  autoSave: boolean;
-
   // --- shortcuts ---
   /**
    * Keybinding that opens the selection bubble menu. If the cursor is
@@ -91,7 +82,6 @@ export const DEFAULT_SETTINGS: ProsedownSettings = {
   defaultCodeBlockLang: "",
   diffLayout: "side-by-side",
   diffMode: "rendered",
-  autoSave: true,
   bubbleMenuShortcut: "Mod+/",
 };
 
@@ -114,7 +104,6 @@ export const SETTING_KEYS: (keyof ProsedownSettings)[] = [
   "defaultCodeBlockLang",
   "diffLayout",
   "diffMode",
-  "autoSave",
   "bubbleMenuShortcut",
 ];
 
