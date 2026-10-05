@@ -29,6 +29,7 @@ import { normalizeMarkdown, buildMarkdownConfig, buildMdPipeline } from "../webv
 import { DEFAULT_SETTINGS, mergeSettings } from "../webview/settings";
 import { extractFrontmatter, prependFrontmatter } from "../webview/frontmatter";
 import { applySerialized, createBaseline } from "../webview/surgical-save";
+import { isGfmAutolink } from "../webview/autolink";
 import { readFileSync } from "fs";
 import {
   isYouTubeUrl,
@@ -1297,6 +1298,17 @@ async function run() {
       }
     }
     assert(`${file}: every block replaced / deleted / inserted reopens correctly`, wrong === 0, `${wrong} wrong`);
+  }
+
+  // ==========================================================================
+  category("S. Auto-link rule (what the editor links while typing)");
+  // ==========================================================================
+  // Must match GFM autolink literals — what the saved file links on its own.
+  for (const t of ["https://foo.com/x", "http://a.b", "www.foo.com", "WWW.FOO.COM/p?q=1", "user@mail.com", "a.b-c@d.e.f"]) {
+    assert(`links ${t}`, isGfmAutolink(t));
+  }
+  for (const t of ["README.md", "src/foo/bar.md", "foo.com", "a.io", "example.org/path", "main.ts", "node.js", "v1.0.16", "https://", "www.", "user@localhost"]) {
+    assert(`does not link ${t}`, !isGfmAutolink(t));
   }
 
   // --------------------------------------------------------------------------
