@@ -2,7 +2,7 @@
   "name": "prosedown",
   "displayName": "Prosedown",
   "description": "Rich, block-based WYSIWYG markdown editing in VS Code — tables, math, Mermaid, and rich diffs.",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "publisher": "psuzzi",
   "license": "MIT",
   "repository": {
@@ -174,7 +174,7 @@
           "type": "boolean",
           "default": false,
           "order": 1,
-          "markdownDescription": "Deprecated no-op. Opening a file no longer rewrites or auto-saves it. Edits follow VS Code's own `#files.autoSave#` / manual save, and only the top-level blocks the user changed are rewritten."
+          "markdownDeprecationMessage": "No longer used. Opening a file never rewrites or saves it. Saving follows VS Code's own `#files.autoSave#` / manual save, and only the blocks you edited are rewritten."
         },
         "prosedown.bullet": {
           "type": "string",

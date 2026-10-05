@@ -53,14 +53,6 @@ export interface ProsedownSettings {
   /** Default diff view mode: source (line diff) or rendered (HTML diff). */
   diffMode: "source" | "rendered";
 
-  // --- saving ---
-  /**
-   * Deprecated no-op. Opening a file no longer rewrites or auto-saves it;
-   * only user edits are written, and only the top-level blocks they
-   * changed. Kept so existing `prosedown.autoSave` values still parse.
-   */
-  autoSave: boolean;
-
   // --- shortcuts ---
   /**
    * Keybinding that opens the selection bubble menu. If the cursor is
@@ -90,7 +82,6 @@ export const DEFAULT_SETTINGS: ProsedownSettings = {
   defaultCodeBlockLang: "",
   diffLayout: "side-by-side",
   diffMode: "rendered",
-  autoSave: false,
   bubbleMenuShortcut: "Mod+/",
 };
 
@@ -113,7 +104,6 @@ export const SETTING_KEYS: (keyof ProsedownSettings)[] = [
   "defaultCodeBlockLang",
   "diffLayout",
   "diffMode",
-  "autoSave",
   "bubbleMenuShortcut",
 ];
 
