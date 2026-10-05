@@ -393,6 +393,10 @@ html, body, #root {
   text-align: left;
 }
 
+/* GFM column alignment (`--:`, `:-:`), carried as the cell's align attribute. */
+.tiptap-editor :is(th, td)[align="right"] { text-align: right; }
+.tiptap-editor :is(th, td)[align="center"] { text-align: center; }
+
 /* Lightest separators between columns only — not the extreme left/right edges. */
 .tiptap-editor th:not(:first-child),
 .tiptap-editor td:not(:first-child) {
