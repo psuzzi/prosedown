@@ -311,7 +311,7 @@ function mapSegmentsOutsideFences(md: string, fn: (segment: string) => string): 
 
 /**
  * Remove unnecessary backslash escapes that remark-stringify adds
- * (`\~ \* \_ \[ \=`) outside code blocks/spans, so the saved source is clean.
+ * (`\~ \* \_ \[ \= \&`) outside code blocks/spans, so the saved source is clean.
  * Preserves real strikethrough (~~text~~) and emphasis markers.
  */
 function unescapeSpecialChars(md: string): string {
@@ -342,6 +342,11 @@ function unescapeText(text: string): string {
   // Remove backslash before = when followed by a non-= non-whitespace char
   // (remark escapes = to prevent setext headings, but "=> text" is never one)
   text = text.replace(/\\=(?=[^=\s])/g, "=");
+  // Remove backslash before & unless what follows reads as a character
+  // reference (`&copy;`, `&#169;`) — only there does a bare & change meaning.
+  // remark escapes every & before a letter, which mangles query strings
+  // (`?a=1\&b=2`) and names (`AT\&T`).
+  text = text.replace(/\\&(?!#?[A-Za-z0-9]+;)/g, "&");
   return text;
 }
 

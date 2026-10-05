@@ -441,6 +441,26 @@ async function run() {
   category("J. Special characters / escaping");
   // --------------------------------------------------------------------------
 
+  // Unescape \& → & (#46): remark escapes every & before a letter.
+  await roundtripCase("ampersand in text preserved", "AT&T and R&D, Q&A.");
+  await roundtripCase(
+    "ampersand in a link / image URL preserved",
+    "[q](https://x.y/?a=1&b=2)\n\n![badge](https://img.shields.io/badge/a-b?logo=x&logoColor=white)",
+  );
+  await roundtripCase(
+    "linked badge with & in the URL preserved",
+    "[![Open VSX](https://img.shields.io/badge/Open%20VSX-Install?logo=eclipseide&logoColor=white)](https://open-vsx.org/extension/psuzzi/prosedown)",
+  );
+  await roundtripCase(
+    "escaped & before a character reference stays escaped",
+    "Write \\&copy; and \\&#169; to show the source.",
+  );
+  eq(
+    "\\& inside a fence or code span → left verbatim",
+    normalizeMarkdown("`a\\&b`\n\n```\nAT\\&T\n```\n"),
+    "`a\\&b`\n\n```\nAT\\&T\n```\n",
+  );
+
   // Unescape \~ → ~
   await roundtripCase(
     "bare tilde preserved",
@@ -1175,6 +1195,18 @@ async function run() {
   await surgicalCase("escapes in the edited paragraph keep their meaning", "Use \\*literal\\* stars here.\n\n\\# not a heading\n", "Use \\*literal\\* stars there.\n\n\\# not a heading\n");
   await surgicalCase("linked badge elsewhere is untouched", "[![b](https://x.y/b.svg?a=1&b=2)](https://x.y)\n\nPara word.\n", "[![b](https://x.y/b.svg?a=1&b=2)](https://x.y)\n\nPara words.\n");
 
+  await surgicalCase(
+    "editing a table cell keeps the column alignment",
+    "| A | B |\n|:--|--:|\n| 1 | word |\n\nEnd.\n",
+    "| A | B |\n|:--|--:|\n| 1 | words |\n\nEnd.\n",
+    "| A   | B     |\n| :-- | ----: |\n| 1   | words |\n\nEnd.\n",
+  );
+  await surgicalCase(
+    "editing next to a badge on the same line keeps & in its URL",
+    "![b](https://x.y/b.svg?a=1&b=2) word\n\nEnd.\n",
+    "![b](https://x.y/b.svg?a=1&b=2) words\n\nEnd.\n",
+  );
+
   // --- blocks the serializer drops are never deleted ---
   await surgicalCase("HTML comment before the edited paragraph", "# T\n\n<!-- keep -->\n\nPara word.\n", "# T\n\n<!-- keep -->\n\nPara words.\n");
   await surgicalCase("<details> block", "<details>\n<summary>S</summary>\n\nInner\n\n</details>\n\nPara word.\n", "<details>\n<summary>S</summary>\n\nInner\n\n</details>\n\nPara words.\n");
@@ -1187,7 +1219,7 @@ async function run() {
   );
   await surgicalCase("serializer splits one block (two images) and drops another", "<!-- c -->\n\nA word.\n\n![a](a.png) ![b](b.png)\n\nTail.\n", "<!-- c -->\n\nA word.\n\n![a](a.png) ![b](b.png)\n\nTails.\n");
 
-  await surgicalCase("dropped block before a paragraph the serializer restyles (entity)", "Intro.\n\n<!-- keep -->\n\nAT&amp;T word.\n", "Intro.\n\n<!-- keep -->\n\nAT&amp;T words.\n", "Intro.\n\n<!-- keep -->\n\nAT\\&T words.\n");
+  await surgicalCase("dropped block before a paragraph the serializer restyles (entity)", "Intro.\n\n<!-- keep -->\n\nAT&amp;T word.\n", "Intro.\n\n<!-- keep -->\n\nAT&amp;T words.\n", "Intro.\n\n<!-- keep -->\n\nAT&T words.\n");
   await surgicalCase(
     "leading HTML block, then a reference link",
     "<p align=\"center\"><img src=\"logo.png\"></p>\n\nMade by [me][me] word.\n\n[me]: https://x.y\n",
