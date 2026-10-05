@@ -40,4 +40,17 @@ Add a new paragraph below this one, save, check the diff. Then delete it again.
 
 DELETE ME: remove this whole paragraph, save, check the diff.
 
+## 5. Alignment and ampersands
+
+Change the word EDIT in the table and in the paragraph below, then save.
+
+| Left | Right | Centre |
+|:-----|------:|:------:|
+| EDIT | 1     | x      |
+
+AT&T docs: [query link](https://example.com/?a=1&b=2) EDIT.
+
+In the diff, the separator row must keep its colons, the right and centre
+columns must still look aligned in the editor, and no `\&` may appear.
+
 Last line, no changes expected here.
