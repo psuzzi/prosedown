@@ -337,6 +337,22 @@ async function run() {
     "| Header 1 | Header 2 | Header 3 |\n| -------- | -------- | -------- |\n| Cell 1   | Cell 2   | Cell 3   |\n| Cell 4   | Cell 5   | Cell 6   |"
   );
 
+  // Column alignment (#63): the separator's colons survive the round-trip.
+  await roundtripCase(
+    "column alignment kept (:--, --:, :-:)",
+    "| Left | Right | Mid |\n| :--- | ----: | :-: |\n| a    | b     | c   |",
+  );
+  await roundtripCase(
+    "column alignment kept when the table is re-padded",
+    "|L|R|M|\n|:-|-:|:-:|\n|longer cell|b|c|",
+    "| L           | R   | M   |\n| :---------- | --: | :-: |\n| longer cell | b   | c   |",
+  );
+  eq(
+    "alignment separator shown inside a fence → left verbatim",
+    normalizeMarkdown("```\n|L|R|\n|:-|-:|\n|a|b|\n```\n"),
+    "```\n|L|R|\n|:-|-:|\n|a|b|\n```\n",
+  );
+
   // `|` inside code span in table cell — the critical protectTableCodePipes test.
   // Output canonicalizes to GFM-escaped `\|` (which is the correct markdown).
   await roundtripCase(

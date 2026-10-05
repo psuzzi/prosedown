@@ -432,15 +432,9 @@ function fixTableHeadersInSegment(md: string): string {
         isEmptyRow(tableLines[0]) &&
         isSeparatorRow(tableLines[1])
       ) {
-        const dataRows = tableLines.slice(2);
-        result.push(dataRows[0]);
-        result.push(buildSeparator(dataRows));
-        result.push(...dataRows.slice(1));
-      } else if (tableLines.length >= 2 && isSeparatorRow(tableLines[1])) {
-        const dataRows = [tableLines[0], ...tableLines.slice(2)];
-        result.push(tableLines[0]);
-        result.push(buildSeparator(dataRows));
-        result.push(...tableLines.slice(2));
+        // Promote the first data row to header. The separator is kept as it
+        // is (it carries the column alignment); padTables sizes it.
+        result.push(tableLines[2], tableLines[1], ...tableLines.slice(3));
       } else {
         result.push(...tableLines);
       }
@@ -485,10 +479,17 @@ function padTablesInSegment(md: string): string {
 
       for (const tl of tableLines) {
         if (isSeparatorRow(tl)) {
+          // Keep each column's alignment colons (`:--`, `--:`, `:-:`).
+          const marks = splitTableRow(tl).map((c) => c.trim());
           result.push(
             "|" +
               colWidths
-                .map((w) => " " + "-".repeat(Math.max(w, 3)) + " ")
+                .map((w, idx) => {
+                  const left = marks[idx]?.startsWith(":") ? ":" : "";
+                  const right = marks[idx]?.endsWith("-:") ? ":" : "";
+                  const dashes = Math.max(w, 3) - left.length - right.length;
+                  return " " + left + "-".repeat(dashes) + right + " ";
+                })
                 .join("|") +
               "|"
           );
@@ -509,21 +510,6 @@ function padTablesInSegment(md: string): string {
     }
   }
   return result.join("\n");
-}
-
-function buildSeparator(rows: string[]): string {
-  const colWidths: number[] = [];
-  for (const row of rows) {
-    const cells = splitTableRow(row);
-    cells.forEach((cell, idx) => {
-      colWidths[idx] = Math.max(colWidths[idx] || 3, cell.trim().length);
-    });
-  }
-  return (
-    "|" +
-    colWidths.map((w) => " " + "-".repeat(Math.max(w, 3)) + " ").join("|") +
-    "|"
-  );
 }
 
 /** Split a markdown table row into cells, respecting | inside backtick spans. */
