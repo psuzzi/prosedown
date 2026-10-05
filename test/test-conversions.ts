@@ -28,6 +28,8 @@ import { roundTrip, mdToHtml, htmlToMd } from "./pipeline";
 import { normalizeMarkdown, buildMarkdownConfig, buildMdPipeline } from "../webview/markdown.config";
 import { DEFAULT_SETTINGS, mergeSettings } from "../webview/settings";
 import { extractFrontmatter, prependFrontmatter } from "../webview/frontmatter";
+import { applySerialized, createBaseline } from "../webview/surgical-save";
+import { readFileSync } from "fs";
 import {
   isYouTubeUrl,
   getYouTubeVideoId,
@@ -86,6 +88,31 @@ async function roundtripCase(
       ? actual
       : `${actual}\n  [NON-IDEMPOTENT — 2nd pass →]\n${secondPass}`,
     known: opts.known,
+  });
+}
+
+/**
+ * Surgical save: simulate an edit by round-tripping the document before
+ * (`original`) and after (`edited`), then check the saved markdown two ways —
+ * the bytes are exactly `want`, and reopening it gives the document the
+ * editor holds (so the splice never changes meaning).
+ */
+async function surgicalCase(
+  name: string,
+  original: string,
+  edited: string,
+  want: string = edited,
+) {
+  const next = await roundTrip(edited);
+  const base = createBaseline(original, await roundTrip(original));
+  const saved = applySerialized(base, next).body;
+  const reopened = await roundTrip(saved);
+  results.push({
+    name,
+    category: currentCategory,
+    passed: saved === want && reopened === next,
+    expected: want,
+    actual: reopened === next ? saved : `${saved}\n  [REOPENS AS →]\n${reopened}`,
   });
 }
 
@@ -1100,6 +1127,100 @@ async function run() {
     codeFencePipeline("markdown", "```\nplain\n```", mergeSettings({ defaultCodeBlockLang: "text" })),
     "````markdown\n```\nplain\n```\n````\n"
   );
+
+  // ==========================================================================
+  category("R. Surgical save");
+  // ==========================================================================
+  // Saving writes back only the blocks that were edited (#62, #63). Every
+  // case edits one place and expects every other byte of the file unchanged.
+
+  {
+    const messy =
+      "<!-- note -->\n\nTitle\n=====\n\n* one\n* two\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n" +
+      "<img src=\"a.png\" width=\"200\">\n\nSee [docs][d] and __this__.\n\n[d]: https://example.com\n\nLast word.\n";
+    const canon = await roundTrip(messy);
+    assert(
+      "no edit → file is byte-identical",
+      applySerialized(createBaseline(messy, canon), canon).body === messy,
+    );
+    await surgicalCase(
+      "one-word edit leaves setext, * bullets, unpadded table, HTML, comment, definition",
+      messy,
+      messy.replace("Last word.", "Last words."),
+    );
+  }
+
+  // --- the edited block is the only thing rewritten ---
+  await surgicalCase("edit first block", "A word.\n\n* x\n* y\n", "A words.\n\n* x\n* y\n");
+  await surgicalCase("edit last block, no final newline", "* x\n* y\n\nline word", "* x\n* y\n\nline words");
+  await surgicalCase("CRLF file keeps CRLF, also in the edited block", "# T\r\n\r\nOne word.\r\n\r\nTwo.\r\n", "# T\r\n\r\nOne words.\r\n\r\nTwo.\r\n");
+  await surgicalCase("extra blank lines around the edited block are kept", "A.\n\n\n\nB word.\n\n\nC.\n", "A.\n\n\n\nB words.\n\n\nC.\n");
+  await surgicalCase("indented code and tight heading left alone", "# T\nIntro.\n\n    code\n\nEnd word.\n", "# T\nIntro.\n\n    code\n\nEnd words.\n");
+  await surgicalCase("escapes in the edited paragraph keep their meaning", "Use \\*literal\\* stars here.\n\n\\# not a heading\n", "Use \\*literal\\* stars there.\n\n\\# not a heading\n");
+  await surgicalCase("linked badge elsewhere is untouched", "[![b](https://x.y/b.svg?a=1&b=2)](https://x.y)\n\nPara word.\n", "[![b](https://x.y/b.svg?a=1&b=2)](https://x.y)\n\nPara words.\n");
+
+  // --- blocks the serializer drops are never deleted ---
+  await surgicalCase("HTML comment before the edited paragraph", "# T\n\n<!-- keep -->\n\nPara word.\n", "# T\n\n<!-- keep -->\n\nPara words.\n");
+  await surgicalCase("<details> block", "<details>\n<summary>S</summary>\n\nInner\n\n</details>\n\nPara word.\n", "<details>\n<summary>S</summary>\n\nInner\n\n</details>\n\nPara words.\n");
+  await surgicalCase("footnote definition", "Note[^1] here.\n\nOther.\n\n[^1]: The note.\n", "Note[^1] here.\n\nOthers.\n\n[^1]: The note.\n");
+  await surgicalCase(
+    "link definition survives an edit to the paragraph that uses it",
+    "Intro.\n\nSee [docs][d] word.\n\n[d]: https://x.y\n\nEnd.\n",
+    "Intro.\n\nSee [docs][d] words.\n\n[d]: https://x.y\n\nEnd.\n",
+    "Intro.\n\nSee [docs](https://x.y) words.\n\n[d]: https://x.y\n\nEnd.\n",
+  );
+  await surgicalCase("serializer splits one block (two images) and drops another", "<!-- c -->\n\nA word.\n\n![a](a.png) ![b](b.png)\n\nTail.\n", "<!-- c -->\n\nA word.\n\n![a](a.png) ![b](b.png)\n\nTails.\n");
+
+  // --- inserting and deleting blocks ---
+  await surgicalCase("delete first block", "A.\n\nB.\n\nC.\n", "B.\n\nC.\n");
+  await surgicalCase("delete middle block", "A.\n\nB.\n\nC.\n", "A.\n\nC.\n");
+  await surgicalCase("delete last block", "A.\n\nB.\n\nC.\n", "A.\n\nB.\n");
+  await surgicalCase("delete one of several identical blocks", "Same.\n\nSame.\n\nUnique.\n\nSame.\n", "Same.\n\nSame.\n\nSame.\n");
+  await surgicalCase("delete a block next to a comment keeps the comment", "A.\n\n<!-- c -->\n\nB.\n\nC.\n", "A.\n\n<!-- c -->\n\nC.\n");
+  await surgicalCase("insert at start", "* a\n* b\n\nPara.\n", "New.\n\n* a\n* b\n\nPara.\n");
+  await surgicalCase("insert in the middle", "* a\n* b\n\nPara.\n", "* a\n* b\n\nNew.\n\nPara.\n");
+  await surgicalCase("append", "* a\n* b\n\nPara.\n", "* a\n* b\n\nPara.\n\nNew.\n");
+  await surgicalCase("adding a list item rewrites that list only", "Intro.\n\n* a\n* b\n\n+ x\n", "Intro.\n\n* a\n* b\n* c\n\n+ x\n", "Intro.\n\n- a\n- b\n- c\n\n+ x\n");
+  await surgicalCase(
+    "seam check: new text that would capture a kept block → plain serialize",
+    "Intro.\n\nX\n\n    code\n",
+    "Intro.\n\n- X\n\n    code\n",
+    "Intro.\n\n- X\n\n  code\n",
+  );
+
+  // --- several saves through one evolving baseline ---
+  {
+    let doc = "<!-- c -->\n\n* a\n* b\n\nPara one.\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nPara two.\n";
+    let base = createBaseline(doc, await roundTrip(doc));
+    for (const [from, to] of [["one", "ONE"], ["two", "TWO"], ["ONE", "uno"], ["Para TWO.", "Para TWO.\n\nAdded."]]) {
+      doc = doc.replace(from, to);
+      base = applySerialized(base, await roundTrip(doc));
+    }
+    assert("four successive edits each touch only their block", base.body === doc, base.body);
+  }
+
+  // --- sweep: replace / delete / insert at every block of the corpus ---
+  // Whatever is saved must reopen as exactly the document the editor holds.
+  for (const file of ["test/test.md", "test/example.md"]) {
+    const original = extractFrontmatter(readFileSync(file, "utf-8")).content;
+    const canon = await roundTrip(original);
+    const base = createBaseline(original, canon);
+    const blocks = canon.split(/\n\n(?=\S)/);
+    let wrong = 0;
+    for (let k = 0; k < blocks.length; k++) {
+      for (const mutate of [
+        (b: string[]) => b.splice(k, 1, "Replaced paragraph."),
+        (b: string[]) => b.splice(k, 1),
+        (b: string[]) => b.splice(k, 0, "Inserted paragraph."),
+      ]) {
+        const edited = [...blocks];
+        mutate(edited);
+        const next = await roundTrip(edited.join("\n\n"));
+        if ((await roundTrip(applySerialized(base, next).body)) !== next) wrong++;
+      }
+    }
+    assert(`${file}: every block replaced / deleted / inserted reopens correctly`, wrong === 0, `${wrong} wrong`);
+  }
 
   // --------------------------------------------------------------------------
   // Print report
