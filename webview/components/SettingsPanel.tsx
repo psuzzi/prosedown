@@ -182,7 +182,7 @@ export function SettingsPanel({
               onChange={(v) => set("compactLists", v)}
             />
             <Toggle
-              label="Unescape \~, \*, \_, \[ added by remark-stringify"
+              label="Unescape \~, \*, \_, \[, \& added by remark-stringify"
               checked={settings.unescapeSpecialChars}
               onChange={(v) => set("unescapeSpecialChars", v)}
             />

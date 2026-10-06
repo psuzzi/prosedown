@@ -38,6 +38,23 @@ import { isBrowserMode, vscodeApi } from "./vscode-api";
 
 const lowlight = createLowlight(common);
 
+// GFM column alignment (`:--`, `--:`, `:-:`) reaches the editor as an `align`
+// attribute on each cell. Tiptap's table cells drop unknown attributes, so
+// declare it — otherwise editing a table resets its alignment on save.
+const withColumnAlign = {
+  addAttributes(this: { parent?: () => Record<string, unknown> }) {
+    return {
+      ...this.parent?.(),
+      align: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.getAttribute("align"),
+        renderHTML: (attrs: { align?: string | null }) =>
+          attrs.align ? { align: attrs.align } : {},
+      },
+    };
+  },
+};
+
 export function App() {
   const handleUpdateRef = useRef<() => void>(() => {});
   const editorContainerRef = useRef<HTMLDivElement>(null);
@@ -66,8 +83,8 @@ export function App() {
       ImageBlock,
       Table.configure({ resizable: false }),
       TableRow,
-      TableCell,
-      TableHeader,
+      TableCell.extend(withColumnAlign),
+      TableHeader.extend(withColumnAlign),
       TaskList,
       TaskItem.configure({ nested: true }),
       MermaidBlock,
