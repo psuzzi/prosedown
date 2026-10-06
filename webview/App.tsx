@@ -99,6 +99,7 @@ export function App() {
       StarterKit.configure({
         codeBlock: false, // replaced by CodeBlockLowlight
         code: false, // replaced below so inline code can coexist with bold/italic
+        link: false, // replaced below; StarterKit's copy would auto-link with the default rule
         heading: { levels: [1, 2, 3, 4, 5, 6] },
       }),
       // Tiptap's default Code mark sets `excludes: '_'`, which strips every
