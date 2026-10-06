@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
-import { TextSelection } from "@tiptap/pm/state";
+import { Plugin, TextSelection } from "@tiptap/pm/state";
+import { closeHistory } from "@tiptap/pm/history";
 import { StarterKit } from "@tiptap/starter-kit";
 import { Code } from "@tiptap/extension-code";
 import { Link } from "@tiptap/extension-link";
+import { isGfmAutolink } from "./autolink";
 import { ImageBlock } from "./extensions/ImageView";
 import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
@@ -55,6 +57,30 @@ const withColumnAlign = {
   },
 };
 
+// An automatic link must be its own undo step, so that Cmd/Ctrl+Z right after
+// one removes the link and leaves the typing (the "undo autoformat" behaviour
+// of Word and Google Docs). prosemirror-history groups changes that arrive
+// within 500 ms into one event; `closeHistory` starts a new event for the
+// link, and the time of 1 makes the next keystroke start another one.
+const LinkWithUndoableAutolink = Link.extend({
+  addProseMirrorPlugins() {
+    return (this.parent?.() ?? []).map((plugin) => {
+      const { spec } = plugin;
+      const append = spec.appendTransaction;
+      if (!append || !String((plugin as { key?: string }).key).startsWith("autolink")) {
+        return plugin;
+      }
+      return new Plugin({
+        ...spec,
+        appendTransaction: (trs, oldState, newState) => {
+          const tr = append.call(spec, trs, oldState, newState);
+          return tr ? closeHistory(tr).setTime(1) : tr;
+        },
+      });
+    });
+  },
+});
+
 export function App() {
   const handleUpdateRef = useRef<() => void>(() => {});
   const editorContainerRef = useRef<HTMLDivElement>(null);
@@ -73,13 +99,17 @@ export function App() {
       StarterKit.configure({
         codeBlock: false, // replaced by CodeBlockLowlight
         code: false, // replaced below so inline code can coexist with bold/italic
+        link: false, // replaced below; StarterKit's copy would auto-link with the default rule
         heading: { levels: [1, 2, 3, 4, 5, 6] },
       }),
       // Tiptap's default Code mark sets `excludes: '_'`, which strips every
       // other mark (e.g. bold) when the code mark is applied. Override to ''
       // so `**\`bold code\`**` round-trips without losing the bold wrapper.
       Code.extend({ excludes: "" }),
-      Link.configure({ openOnClick: false }),
+      LinkWithUndoableAutolink.configure({
+        openOnClick: false,
+        shouldAutoLink: isGfmAutolink,
+      }),
       ImageBlock,
       Table.configure({ resizable: false }),
       TableRow,

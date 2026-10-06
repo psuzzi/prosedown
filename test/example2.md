@@ -54,3 +54,10 @@ In the diff, the separator row must keep its colons, the right and centre
 columns must still look aligned in the editor, and no `\&` may appear.
 
 Last line, no changes expected here.
+
+## 6. Auto-linking
+
+Type these, each followed by a space: `README.md` `foo.com` `src/notes.md` — none
+may become a link. Then `www.example.com` `https://example.com` `a@b.co` — all
+three must. Drag a `.md` file from the Explorer: the path stays plain text.
+
