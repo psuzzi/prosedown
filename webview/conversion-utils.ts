@@ -4,6 +4,8 @@
  * (test/pipeline.ts, regex-based).
  */
 
+import type { Options as RemarkRehypeOptions } from "remark-rehype";
+
 /** Custom remark-rehype handlers that convert remark-math AST nodes to HTML. */
 export const mathHandlers = {
   inlineMath(_state: any, node: any) {
@@ -22,6 +24,78 @@ export const mathHandlers = {
       children: [{ type: "text", value: node.value }],
     };
   },
+};
+
+/**
+ * Prefix remark-rehype puts on footnote ids and hrefs (its `clobberPrefix`).
+ * The default, `user-content-`, is what GitHub uses, so a file that already
+ * holds a literal `[1](#user-content-fn-1)` link would look like a footnote.
+ * A prefix of our own lets the save path recognise only the footnotes it
+ * rendered itself (see `footnoteRestoreTransform` in markdown.config.ts).
+ */
+export const FOOTNOTE_PREFIX = "prosedown-";
+
+/**
+ * Raw HTML blocks (`<details>`, `<summary>`, comments, `<div align>`…) can't
+ * be shown as rich text, and remark-rehype drops them by default, so a save
+ * that re-serialized a block next to them lost them. Carry each block through
+ * the editor as an opaque placeholder holding its exact source, which the
+ * html → md step writes back verbatim (see `rawHtmlToMdast` in
+ * markdown.config.ts). Inline HTML inside a paragraph is not covered.
+ */
+export const RAW_HTML_TYPE = "rawHtml";
+
+export const rawHtmlHandlers = {
+  html(_state: any, node: any, parent: any) {
+    if (parent && parent.type === "paragraph") return undefined;
+    return {
+      type: "element",
+      tagName: "div",
+      properties: { dataType: RAW_HTML_TYPE, dataRaw: node.value },
+      children: [],
+    };
+  },
+};
+
+/**
+ * On the way back the block is serialized as a one-line placeholder comment
+ * and only turned back into its source by `restoreRawHtml`, the very last
+ * step of html → md. Later text passes (entity cleanup turns every `&amp;`
+ * into `&`, unescapes, path rewriting) never see the HTML.
+ */
+const RAW_HTML_MARK = "BTRMK_RAW:";
+
+export function rawHtmlPlaceholder(raw: string): string {
+  const bytes = new TextEncoder().encode(raw);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return `<!--${RAW_HTML_MARK}${btoa(bin)}-->`;
+}
+
+/**
+ * Put each raw HTML block back. The placeholder sits where the block started,
+ * after any container prefix (`> `, list indentation, a list marker); the
+ * block's later lines get the same prefix, with a list marker turned into
+ * spaces, so they stay inside the container.
+ */
+export function restoreRawHtml(md: string): string {
+  return md.replace(
+    /^(.*?)<!--BTRMK_RAW:([A-Za-z0-9+/=]*)-->/gm,
+    (_m, prefix: string, b64: string) => {
+      const bin = atob(b64);
+      const raw = new TextDecoder().decode(
+        Uint8Array.from(bin, (c) => c.charCodeAt(0)),
+      );
+      const cont = prefix.replace(/[-*+]|\d+[.)]/g, (m) => " ".repeat(m.length));
+      return prefix + raw.split("\n").join("\n" + cont);
+    },
+  );
+}
+
+/** Options for every md → html remark-rehype step (production and tests). */
+export const remarkRehypeOptions: RemarkRehypeOptions = {
+  handlers: { ...mathHandlers, ...rawHtmlHandlers } as RemarkRehypeOptions["handlers"],
+  clobberPrefix: FOOTNOTE_PREFIX,
 };
 
 // Placeholder for | inside code spans in table rows.

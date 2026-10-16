@@ -73,7 +73,7 @@ When you touch any of these, add/update a test case in `test/test-conversions.ts
 
 The pipeline above produces a **full re-serialize** of the document. That is never what is saved. `webview/surgical-save.ts` uses it only to locate the edit, and writes the file's own markdown back with just the edited top-level blocks replaced:
 
-- **`createBaseline(body, canon)`** pairs each stretch of the file (`body`) with the stretch of the serializer's output for the unedited document (`canon`) — a list of *regions*. Blocks the serializer always drops (raw HTML, comments, link definitions) belong to no region; they sit in the gaps between regions, and are carried over even when the regions around them are rewritten.
+- **`createBaseline(body, canon)`** pairs each stretch of the file (`body`) with the stretch of the serializer's output for the unedited document (`canon`) — a list of *regions*. Blocks the serializer always drops (link definitions) belong to no region; they sit in the gaps between regions, and are carried over even when the regions around them are rewritten. Raw HTML blocks are no longer dropped (see "Raw HTML round-trip pipeline"), so they pair like any other block.
 - **`applySerialized(baseline, next)`** scans `canon` and the new serialize `next` from both ends, parses only the span that differs, and splices the serializer's text for it into `body`. It returns the next baseline; its `body` is the markdown to save. If the new text would change how a kept neighbour parses, it widens the rewritten window one region at a time until the seam holds.
 
 `useEditorState.ts` holds the state: `savedRef` (body + frontmatter + the editor HTML they correspond to) and `baselineRef` (built on the first edit, rebuilt when the settings object changes). Opening a file loads with `emitUpdate: false` and posts nothing.
@@ -119,6 +119,14 @@ Three write paths feed the same store:
 `onDidChangeConfiguration` listeners in `src/provider.ts` and `src/diffPanel.ts` push fresh settings to every open webview as `settingsUpdated`. The schema in `package.json` MUST stay in sync with `ProsedownSettings`, `DEFAULT_SETTINGS`, and `SETTING_KEYS` in `webview/settings.ts` — adding a new setting means updating all four places. The one exception is the retired `prosedown.autoSave`, which stays in `package.json` only, with a `markdownDeprecationMessage`, so existing user values are flagged instead of silently unknown.
 
 A one-time migration in `src/extension.ts` (`migrateLegacySettings`) copies pre-2.3.5 globalState settings into User-scope config on first activation.
+
+## Raw HTML round-trip pipeline
+
+A raw HTML **block** (`<details>`, `<summary>`, comments, `<div align>`, `<img width>`) is carried through the editor verbatim. md → html: `rawHtmlHandlers` (in `conversion-utils.ts`, part of `remarkRehypeOptions`) turns each mdast `html` node that is not inside a paragraph into `<div data-type="rawHtml" data-raw="…source…">`, which Tiptap holds as the atom node `RawHtmlBlock` (`webview/extensions/RawHtmlBlock.ts`, a read-only chip). html → md: `rawHtmlToMdast` (the `div` handler given to rehype-remark in `buildMdPipeline`) emits a one-line placeholder comment `<!--BTRMK_RAW:base64-->`, and `restoreRawHtml` turns it back into the source as the **last** step of both `postprocessMarkdown` (production) and `test/pipeline.ts`, re-applying any container prefix (`> `, list indent) to the block's later lines. Restoring last keeps the source away from the text passes (entity cleanup rewrites every `&amp;`). Inline HTML inside a paragraph is still dropped. Run category U tests when touching this.
+
+## Footnotes
+
+remark-rehype renders footnotes with `clobberPrefix: FOOTNOTE_PREFIX` (`prosedown-`), so references are links to `#prosedown-fn-<label>` and definitions a "Footnotes" heading over an ordered list with `#prosedown-fnref-<label>` backrefs. `footnoteRestoreTransform` in `buildMdPipeline` turns those back into `footnoteReference` / `footnoteDefinition` nodes, reading labels from the hrefs. Literal `#user-content-fn-` links already in a file are deliberately left alone. Category T.
 
 ## Embed round-trip pipeline (YouTube, GitHub)
 

@@ -2421,3 +2421,36 @@ html, body, #root {
   cursor: not-allowed;
 }
 
+
+/* Raw HTML block: read-only chip holding the HTML source verbatim */
+.raw-html-block {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0.4em 0;
+  padding: 2px 8px;
+  border: 1px dashed var(--vscode-widget-border, #555);
+  border-radius: 4px;
+  opacity: 0.75;
+  font-size: 0.85em;
+  user-select: none;
+}
+
+.raw-html-block.ProseMirror-selectednode {
+  border-color: var(--vscode-focusBorder, #007fd4);
+  opacity: 1;
+}
+
+.raw-html-label {
+  font-weight: 600;
+  font-size: 0.8em;
+  letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground, #999);
+}
+
+.raw-html-source {
+  font-family: var(--vscode-editor-font-family, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: none;
+}

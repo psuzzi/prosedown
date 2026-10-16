@@ -28,6 +28,8 @@ import rehypeStringify from "rehype-stringify";
 import { buildMdPipeline, normalizeMarkdown } from "../webview/markdown.config";
 import {
   mathHandlers,
+  remarkRehypeOptions,
+  restoreRawHtml,
   PIPE_PH,
   DOLLAR_PH,
   protectCurrencyDollars,
@@ -59,7 +61,7 @@ export async function roundTrip(
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkMath)
-    .use(remarkRehype, { handlers: mathHandlers })
+    .use(remarkRehype, remarkRehypeOptions)
     .use(rehypeStringify)
     .process(protectedMd);
   let html = String(htmlResult).replace(new RegExp(PIPE_PH, "g"), "|");
@@ -110,6 +112,9 @@ export async function roundTrip(
   output = output.replace(/&#x20;/g, " ");
   output = output.replace(/&amp;/g, "&");
 
+  // 7b. Raw HTML blocks back from placeholders, after every text pass
+  output = restoreRawHtml(output);
+
   // 8. Restore frontmatter
   output = prependFrontmatter(output, frontmatter);
 
@@ -126,7 +131,7 @@ export async function mdToHtml(md: string): Promise<string> {
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkMath)
-    .use(remarkRehype, { handlers: mathHandlers })
+    .use(remarkRehype, remarkRehypeOptions)
     .use(rehypeStringify)
     .process(protectedMd);
   let html = String(htmlResult).replace(new RegExp(PIPE_PH, "g"), "|");
@@ -159,5 +164,5 @@ export async function htmlToMd(html: string): Promise<string> {
   let md = normalizeMarkdown(String(mdResult));
   md = md.replace(/&#x20;/g, " ");
   md = md.replace(/&amp;/g, "&");
-  return md;
+  return restoreRawHtml(md);
 }

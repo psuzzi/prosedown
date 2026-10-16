@@ -19,6 +19,8 @@
  *   O. Math (inline and block)
  *   P. Embeds (YouTube, GitHub)
  *   Q. Mermaid diagrams
+ *   T. Footnotes
+ *   U. Raw HTML blocks
  *   N. Settings-driven behavior
  *
  * Usage: npx tsx test/test-conversions.ts
@@ -539,6 +541,30 @@ async function run() {
     "normalizeMarkdown: unescape \\=> arrow",
     normalizeMarkdown("\\=> leads to something\n"),
     "=> leads to something\n"
+  );
+
+  // ==highlight== markers (Jekyll/kramdown highlight plugins) must not gain a
+  // backslash: remark escapes a leading =, but only an all-= line can be a
+  // setext underline.
+  eq(
+    "normalizeMarkdown: unescape \\== highlight at line start",
+    normalizeMarkdown("\\==action: Start these VMs== now\n"),
+    "==action: Start these VMs== now\n"
+  );
+  eq(
+    "normalizeMarkdown: keep \\= on a line that would be a setext underline",
+    normalizeMarkdown("Para\n\\===\n"),
+    "Para\n\\===\n"
+  );
+  eq(
+    "normalizeMarkdown: keep \\= on an all-= line in a blockquote",
+    normalizeMarkdown("> Para\n> \\===\n"),
+    "> Para\n> \\===\n"
+  );
+  eq(
+    "normalizeMarkdown: \\== shown inside a fence → left verbatim",
+    normalizeMarkdown("```\n\\==x==\n```\n"),
+    "```\n\\==x==\n```\n"
   );
 
   // slice 4 of #78: the unescape passes are now fence-aware for ~~~ and indented
@@ -1234,7 +1260,9 @@ async function run() {
     await surgicalCase("a long run of HTML blocks", `${html}\n\nAlpha.\n\nBeta word.\n`, `${html}\n\nAlpha.\n\nBeta words.\n`);
   }
   await surgicalCase("append after trailing HTML keeps the order", "A.\n\n<!-- c -->\n\n<img src=\"b.png\" width=\"10\">\n\nAT&amp;T sign.\n", "A.\n\n<!-- c -->\n\n<img src=\"b.png\" width=\"10\">\n\nAT&amp;T sign.\n\nNew.\n");
-  await surgicalCase("file with only dropped blocks: typed text is added after them", "<!-- todo -->\n\n[a]: https://x.y\n", "<!-- todo -->\n\n[a]: https://x.y\n\nHello.\n");
+  // The comment is a visible block in the editor, so typed text follows it;
+  // the link definition (never shown) stays where it was.
+  await surgicalCase("file with a comment and a link definition: typed text follows the comment", "<!-- todo -->\n\n[a]: https://x.y\n", "<!-- todo -->\n\nHello.\n", "<!-- todo -->\n\nHello.\n\n[a]: https://x.y\n");
   await surgicalCase(
     "seam check widens the window instead of dropping HTML elsewhere",
     "<!-- license -->\n\n# T\n\n<img src=\"logo.png\">\n\nIntro.\n\nX\n\n    code\n",
@@ -1247,7 +1275,8 @@ async function run() {
     "Intro.\n\n+ x\n+ y\n\n<img src=\"b.png\" width=\"10\">\n\n* a\n* b\n\nEnd.\n",
     "Intro.\n\nSame.\n\n- a\n- b\n\n<img src=\"b.png\" width=\"10\">\n\nEnd.\n",
   );
-  await surgicalCase("merging two paragraphs keeps the comment that was between them", "A.\n\n<!-- one -->\n\nB.\n\nC.\n", "A. B.\n\nC.\n", "A. B.\n\n<!-- one -->\n\nC.\n");
+  await surgicalCase("moving text past a comment keeps the comment", "A.\n\n<!-- one -->\n\nB.\n\nC.\n", "A. B.\n\n<!-- one -->\n\nC.\n");
+  await surgicalCase("deleting the comment block removes it", "A.\n\n<!-- one -->\n\nB.\n", "A.\n\nB.\n");
 
   // --- inserting and deleting blocks ---
   await surgicalCase("delete first block", "A.\n\nB.\n\nC.\n", "B.\n\nC.\n");
@@ -1299,6 +1328,71 @@ async function run() {
     }
     assert(`${file}: every block replaced / deleted / inserted reopens correctly`, wrong === 0, `${wrong} wrong`);
   }
+
+  // ==========================================================================
+  category("T. Footnotes");
+
+  await roundtripCase("footnote reference and definition", "Text[^1] here.\n\n[^1]: The note.\n");
+  await roundtripCase("highlight and footnote on one line", "Text ==action: do it== now[^1].\n\n==action: Start==\n\n[^1]: Note.\n");
+  await roundtripCase("named label, referenced twice", "See[^note-x] and again[^note-x].\n\n[^note-x]: Named note.\n");
+  await roundtripCase("multi-paragraph definition", "Ref[^a].\n\n[^a]: First para.\n\n    Second para.\n");
+  await roundtripCase("formatting inside a definition", "Ref[^1].\n\n[^1]: **R**ead-**E**val _loop_ and `code`.\n");
+  // Labels come from the href, not the display number, so refs used out of
+  // label order keep their labels. Definitions come back in order of first use.
+  await roundtripCase(
+    "references used out of label order keep their labels",
+    "B first[^2], then A[^1].\n\n[^1]: One.\n[^2]: Two.\n",
+    "B first[^2], then A[^1].\n\n[^2]: Two.\n\n[^1]: One.\n",
+  );
+  // A file already holding GitHub-style footnote links (from an older save) is
+  // left as it is, not half-converted.
+  await roundtripCase(
+    "literal #user-content-fn links are left alone",
+    "Old[1](#user-content-fn-1).\n\n## Footnotes\n\n1. Note. [↩](#user-content-fnref-1)\n",
+  );
+  // An ordinary ordered list after a "Footnotes" heading is not a footnote list.
+  await roundtripCase("plain list under a Footnotes heading", "## Footnotes\n\n1. One\n2. Two\n");
+  await surgicalCase(
+    "editing a paragraph with a footnote keeps [^n]",
+    "Intro.\n\nNote[^1] word.\n\n[^1]: The note.\n",
+    "Intro.\n\nNote[^1] words.\n\n[^1]: The note.\n",
+  );
+  await surgicalCase(
+    "editing a footnote definition keeps [^n]:",
+    "Note[^1] here.\n\n[^1]: The word.\n",
+    "Note[^1] here.\n\n[^1]: The words.\n",
+  );
+
+  // ==========================================================================
+  category("U. Raw HTML blocks");
+
+  // Raw HTML blocks ride through the editor as verbatim placeholders, so even
+  // a full re-serialize (not just a surgical save) keeps them.
+  await roundtripCase(
+    "kramdown <details markdown=1> hint block",
+    '<details markdown="1">\n<summary>Nudge</summary>\n\nLook at the **log**.\n\n</details>\n',
+  );
+  await roundtripCase("HTML comment", "Intro.\n\n<!-- keep me -->\n\nEnd.\n");
+  await roundtripCase("HTML block with attributes and entities", '<div align="center">\n  <img src="a.png" alt="AT&amp;T" width="10">\n</div>\n');
+  // compactLists (default on) tightens the list; the block itself is intact.
+  await roundtripCase(
+    "HTML block inside a list item",
+    "- item\n\n  <details>\n  <summary>More</summary>\n  </details>\n",
+    "- item\n  <details>\n  <summary>More</summary>\n  </details>\n",
+  );
+  await roundtripCase("HTML block inside a blockquote", "> Quote.\n>\n> <details>\n> <summary>More</summary>\n> </details>\n");
+  await roundtripCase("HTML block with & and = in it", '<p align="center">\n<a href="?a=1&amp;b=2">x &amp; y</a>\n</p>\n');
+  await roundtripCase("HTML block inside a fence stays code", "```html\n<details>\n<summary>x</summary>\n</details>\n```\n");
+  {
+    const hint = (n: number) =>
+      `<details markdown="1">\n<summary>Nudge ${n}</summary>\n\nStep ${n} text.\n\n</details>`;
+    const doc = Array.from({ length: 6 }, (_, i) => `## Stage ${i}\n\nHint ${i}.\n\n${hint(i)}`).join("\n\n") + "\n";
+    const out = await roundTrip(doc);
+    const count = (t: string) => (t.match(/<\/?(details|summary)\b/g) || []).length;
+    assert("full re-serialize of a hint walkthrough keeps every <details>/<summary>", count(out) === count(doc), `${count(out)} of ${count(doc)}`);
+  }
+  // Inline HTML inside a paragraph is still not carried (documented limit).
+  await roundtripCase("inline HTML inside a paragraph is dropped", "Line a<br>line b.\n", "Line aline b.\n");
 
   // ==========================================================================
   category("S. Auto-link rule (what the editor links while typing)");

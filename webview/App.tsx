@@ -18,6 +18,7 @@ import { createCodeBlock } from "./extensions/CodeBlockView";
 import { SlashCommand } from "./extensions/SlashCommand";
 import { MathInline } from "./extensions/MathInline";
 import { MathBlock } from "./extensions/MathBlock";
+import { RawHtmlBlock } from "./extensions/RawHtmlBlock";
 import { MermaidBlock } from "./extensions/MermaidBlock";
 import { YouTubeEmbed } from "./extensions/YouTubeEmbed";
 import { GitHubEmbed } from "./extensions/GitHubEmbed";
@@ -121,6 +122,7 @@ export function App() {
       createCodeBlock(lowlight),
       MathInline,
       MathBlock,
+      RawHtmlBlock,
       YouTubeEmbed,
       GitHubEmbed,
       SlashCommand,

@@ -2,7 +2,7 @@
   "name": "prosedown",
   "displayName": "Prosedown",
   "description": "Rich, block-based WYSIWYG markdown editing in VS Code — tables, math, Mermaid, and rich diffs.",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "publisher": "psuzzi",
   "license": "MIT",
   "repository": {
@@ -379,6 +379,7 @@
     "node-htmldiff": "^0.9.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "hast-util-to-mdast": "^10.1.2",
     "rehype-parse": "^9.0.1",
     "rehype-remark": "^10.0.1",
     "rehype-stringify": "^10.0.1",
