@@ -3,8 +3,9 @@
  *
  * The file's own markdown (`body`) is the source of truth. The editor can only
  * hand us a full re-serialize of the document, which restyles everything
- * (bullets, table padding, escapes) and drops what it cannot represent (raw
- * HTML, comments, link definitions). So we never save that serialize. We use
+ * (bullets, table padding, escapes) and drops what it cannot represent (link
+ * definitions, inline HTML inside a paragraph). So we never save that
+ * serialize. We use
  * it to *locate* the edit:
  *
  *   canon = serialize(document as loaded)      next = serialize(document now)
@@ -59,15 +60,14 @@ const RESYNC = 8;
  * Pair each stretch of `body` with the stretch of `canon` it serializes to.
  * Most blocks pair 1:1. Where the serializer drops, splits or merges blocks,
  * the unmatched blocks on both sides form one region. Blocks it always drops
- * (raw HTML, comments, link definitions) belong to no region: they sit in the
- * gap between two, and gaps are never rewritten.
+ * (link definitions) belong to no region: they sit in the gap between two,
+ * and gaps are never rewritten. Raw HTML blocks are carried through the editor
+ * verbatim (see `rawHtmlHandlers`), so they pair like any other block.
  */
 export function createBaseline(body: string, canon: string): Baseline {
-  // Raw HTML and link definitions never survive serialization (HTML is
-  // dropped, links come back inline), so they are never part of a region.
-  const B = blocksOf(body).filter(
-    (b) => b.type !== "html" && b.type !== "definition",
-  );
+  // Link definitions never survive serialization (links come back inline),
+  // so they are never part of a region.
+  const B = blocksOf(body).filter((b) => b.type !== "definition");
   const C = blocksOf(canon);
   // Letters and digits only: blind to markers, escapes, padding and wrapping.
   const key = (md: string, b: Block) =>

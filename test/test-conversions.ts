@@ -20,6 +20,7 @@
  *   P. Embeds (YouTube, GitHub)
  *   Q. Mermaid diagrams
  *   T. Footnotes
+ *   U. Raw HTML blocks
  *   N. Settings-driven behavior
  *
  * Usage: npx tsx test/test-conversions.ts
@@ -1259,7 +1260,9 @@ async function run() {
     await surgicalCase("a long run of HTML blocks", `${html}\n\nAlpha.\n\nBeta word.\n`, `${html}\n\nAlpha.\n\nBeta words.\n`);
   }
   await surgicalCase("append after trailing HTML keeps the order", "A.\n\n<!-- c -->\n\n<img src=\"b.png\" width=\"10\">\n\nAT&amp;T sign.\n", "A.\n\n<!-- c -->\n\n<img src=\"b.png\" width=\"10\">\n\nAT&amp;T sign.\n\nNew.\n");
-  await surgicalCase("file with only dropped blocks: typed text is added after them", "<!-- todo -->\n\n[a]: https://x.y\n", "<!-- todo -->\n\n[a]: https://x.y\n\nHello.\n");
+  // The comment is a visible block in the editor, so typed text follows it;
+  // the link definition (never shown) stays where it was.
+  await surgicalCase("file with a comment and a link definition: typed text follows the comment", "<!-- todo -->\n\n[a]: https://x.y\n", "<!-- todo -->\n\nHello.\n", "<!-- todo -->\n\nHello.\n\n[a]: https://x.y\n");
   await surgicalCase(
     "seam check widens the window instead of dropping HTML elsewhere",
     "<!-- license -->\n\n# T\n\n<img src=\"logo.png\">\n\nIntro.\n\nX\n\n    code\n",
@@ -1272,7 +1275,8 @@ async function run() {
     "Intro.\n\n+ x\n+ y\n\n<img src=\"b.png\" width=\"10\">\n\n* a\n* b\n\nEnd.\n",
     "Intro.\n\nSame.\n\n- a\n- b\n\n<img src=\"b.png\" width=\"10\">\n\nEnd.\n",
   );
-  await surgicalCase("merging two paragraphs keeps the comment that was between them", "A.\n\n<!-- one -->\n\nB.\n\nC.\n", "A. B.\n\nC.\n", "A. B.\n\n<!-- one -->\n\nC.\n");
+  await surgicalCase("moving text past a comment keeps the comment", "A.\n\n<!-- one -->\n\nB.\n\nC.\n", "A. B.\n\n<!-- one -->\n\nC.\n");
+  await surgicalCase("deleting the comment block removes it", "A.\n\n<!-- one -->\n\nB.\n", "A.\n\nB.\n");
 
   // --- inserting and deleting blocks ---
   await surgicalCase("delete first block", "A.\n\nB.\n\nC.\n", "B.\n\nC.\n");
@@ -1358,6 +1362,37 @@ async function run() {
     "Note[^1] here.\n\n[^1]: The word.\n",
     "Note[^1] here.\n\n[^1]: The words.\n",
   );
+
+  // ==========================================================================
+  category("U. Raw HTML blocks");
+
+  // Raw HTML blocks ride through the editor as verbatim placeholders, so even
+  // a full re-serialize (not just a surgical save) keeps them.
+  await roundtripCase(
+    "kramdown <details markdown=1> hint block",
+    '<details markdown="1">\n<summary>Nudge</summary>\n\nLook at the **log**.\n\n</details>\n',
+  );
+  await roundtripCase("HTML comment", "Intro.\n\n<!-- keep me -->\n\nEnd.\n");
+  await roundtripCase("HTML block with attributes and entities", '<div align="center">\n  <img src="a.png" alt="AT&amp;T" width="10">\n</div>\n');
+  // compactLists (default on) tightens the list; the block itself is intact.
+  await roundtripCase(
+    "HTML block inside a list item",
+    "- item\n\n  <details>\n  <summary>More</summary>\n  </details>\n",
+    "- item\n  <details>\n  <summary>More</summary>\n  </details>\n",
+  );
+  await roundtripCase("HTML block inside a blockquote", "> Quote.\n>\n> <details>\n> <summary>More</summary>\n> </details>\n");
+  await roundtripCase("HTML block with & and = in it", '<p align="center">\n<a href="?a=1&amp;b=2">x &amp; y</a>\n</p>\n');
+  await roundtripCase("HTML block inside a fence stays code", "```html\n<details>\n<summary>x</summary>\n</details>\n```\n");
+  {
+    const hint = (n: number) =>
+      `<details markdown="1">\n<summary>Nudge ${n}</summary>\n\nStep ${n} text.\n\n</details>`;
+    const doc = Array.from({ length: 6 }, (_, i) => `## Stage ${i}\n\nHint ${i}.\n\n${hint(i)}`).join("\n\n") + "\n";
+    const out = await roundTrip(doc);
+    const count = (t: string) => (t.match(/<\/?(details|summary)\b/g) || []).length;
+    assert("full re-serialize of a hint walkthrough keeps every <details>/<summary>", count(out) === count(doc), `${count(out)} of ${count(doc)}`);
+  }
+  // Inline HTML inside a paragraph is still not carried (documented limit).
+  await roundtripCase("inline HTML inside a paragraph is dropped", "Line a<br>line b.\n", "Line aline b.\n");
 
   // ==========================================================================
   category("S. Auto-link rule (what the editor links while typing)");

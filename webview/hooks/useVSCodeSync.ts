@@ -10,6 +10,7 @@ import { DEFAULT_SETTINGS, type ProsedownSettings } from "../settings";
 import {
   mathHandlers,
   remarkRehypeOptions,
+  restoreRawHtml,
   PIPE_PH,
   DOLLAR_PH,
   protectCurrencyDollars,
@@ -268,6 +269,8 @@ function postprocessMarkdown(
   md = md.replace(/!\[BlockNote image\]/g, "![]");
   // Restore relative paths
   md = restoreRelativePaths(md, baseUri, docFolderPath);
+  // Last: raw HTML blocks go back verbatim, untouched by the passes above
+  md = restoreRawHtml(md);
   return md;
 }
 

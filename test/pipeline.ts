@@ -29,6 +29,7 @@ import { buildMdPipeline, normalizeMarkdown } from "../webview/markdown.config";
 import {
   mathHandlers,
   remarkRehypeOptions,
+  restoreRawHtml,
   PIPE_PH,
   DOLLAR_PH,
   protectCurrencyDollars,
@@ -111,6 +112,9 @@ export async function roundTrip(
   output = output.replace(/&#x20;/g, " ");
   output = output.replace(/&amp;/g, "&");
 
+  // 7b. Raw HTML blocks back from placeholders, after every text pass
+  output = restoreRawHtml(output);
+
   // 8. Restore frontmatter
   output = prependFrontmatter(output, frontmatter);
 
@@ -160,5 +164,5 @@ export async function htmlToMd(html: string): Promise<string> {
   let md = normalizeMarkdown(String(mdResult));
   md = md.replace(/&#x20;/g, " ");
   md = md.replace(/&amp;/g, "&");
-  return md;
+  return restoreRawHtml(md);
 }

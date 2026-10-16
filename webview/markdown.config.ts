@@ -13,7 +13,8 @@ import rehypeRemark from "rehype-remark";
 import remarkGfm from "remark-gfm";
 import remarkStringify from "remark-stringify";
 import { DEFAULT_SETTINGS, type ProsedownSettings } from "./settings";
-import { FOOTNOTE_PREFIX } from "./conversion-utils";
+import { FOOTNOTE_PREFIX, RAW_HTML_TYPE, rawHtmlPlaceholder } from "./conversion-utils";
+import { defaultHandlers } from "hast-util-to-mdast";
 
 /**
  * Build a remark-stringify options object from user settings.
@@ -55,7 +56,7 @@ export const MARKDOWN_CONFIG = buildMarkdownConfig(DEFAULT_SETTINGS);
 export function buildMdPipeline(settings: ProsedownSettings = DEFAULT_SETTINGS) {
   return unified()
     .use(rehypeParse, { fragment: true })
-    .use(rehypeRemark)
+    .use(rehypeRemark, { handlers: { div: rawHtmlToMdast } })
     .use(remarkGfm)
     .use(footnoteRestoreTransform)
     .use(codeInfoTransform, settings)
@@ -63,6 +64,24 @@ export function buildMdPipeline(settings: ProsedownSettings = DEFAULT_SETTINGS) 
     .use(listCompactTransform, settings)
     .use(imageDedupTransform, settings)
     .use(remarkStringify, buildMarkdownConfig(settings));
+}
+
+/**
+ * A raw HTML placeholder (see `rawHtmlHandlers` in conversion-utils.ts) goes
+ * back to an mdast `html` node holding a placeholder comment, which
+ * `restoreRawHtml` turns back into the exact source once every text pass has
+ * run. Any other `<div>` takes rehype-remark's default path.
+ */
+function rawHtmlToMdast(state: any, node: any): any {
+  if (node.properties?.dataType === RAW_HTML_TYPE) {
+    const result = {
+      type: "html",
+      value: rawHtmlPlaceholder(String(node.properties.dataRaw ?? "")),
+    };
+    state.patch(node, result);
+    return result;
+  }
+  return defaultHandlers.div(state, node);
 }
 
 /**
