@@ -28,6 +28,7 @@ import rehypeStringify from "rehype-stringify";
 import { buildMdPipeline, normalizeMarkdown } from "../webview/markdown.config";
 import {
   mathHandlers,
+  remarkRehypeOptions,
   PIPE_PH,
   DOLLAR_PH,
   protectCurrencyDollars,
@@ -59,7 +60,7 @@ export async function roundTrip(
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkMath)
-    .use(remarkRehype, { handlers: mathHandlers })
+    .use(remarkRehype, remarkRehypeOptions)
     .use(rehypeStringify)
     .process(protectedMd);
   let html = String(htmlResult).replace(new RegExp(PIPE_PH, "g"), "|");
@@ -126,7 +127,7 @@ export async function mdToHtml(md: string): Promise<string> {
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkMath)
-    .use(remarkRehype, { handlers: mathHandlers })
+    .use(remarkRehype, remarkRehypeOptions)
     .use(rehypeStringify)
     .process(protectedMd);
   let html = String(htmlResult).replace(new RegExp(PIPE_PH, "g"), "|");

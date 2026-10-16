@@ -19,6 +19,7 @@
  *   O. Math (inline and block)
  *   P. Embeds (YouTube, GitHub)
  *   Q. Mermaid diagrams
+ *   T. Footnotes
  *   N. Settings-driven behavior
  *
  * Usage: npx tsx test/test-conversions.ts
@@ -539,6 +540,30 @@ async function run() {
     "normalizeMarkdown: unescape \\=> arrow",
     normalizeMarkdown("\\=> leads to something\n"),
     "=> leads to something\n"
+  );
+
+  // ==highlight== markers (Jekyll/kramdown highlight plugins) must not gain a
+  // backslash: remark escapes a leading =, but only an all-= line can be a
+  // setext underline.
+  eq(
+    "normalizeMarkdown: unescape \\== highlight at line start",
+    normalizeMarkdown("\\==action: Start these VMs== now\n"),
+    "==action: Start these VMs== now\n"
+  );
+  eq(
+    "normalizeMarkdown: keep \\= on a line that would be a setext underline",
+    normalizeMarkdown("Para\n\\===\n"),
+    "Para\n\\===\n"
+  );
+  eq(
+    "normalizeMarkdown: keep \\= on an all-= line in a blockquote",
+    normalizeMarkdown("> Para\n> \\===\n"),
+    "> Para\n> \\===\n"
+  );
+  eq(
+    "normalizeMarkdown: \\== shown inside a fence → left verbatim",
+    normalizeMarkdown("```\n\\==x==\n```\n"),
+    "```\n\\==x==\n```\n"
   );
 
   // slice 4 of #78: the unescape passes are now fence-aware for ~~~ and indented
@@ -1299,6 +1324,40 @@ async function run() {
     }
     assert(`${file}: every block replaced / deleted / inserted reopens correctly`, wrong === 0, `${wrong} wrong`);
   }
+
+  // ==========================================================================
+  category("T. Footnotes");
+
+  await roundtripCase("footnote reference and definition", "Text[^1] here.\n\n[^1]: The note.\n");
+  await roundtripCase("highlight and footnote on one line", "Text ==action: do it== now[^1].\n\n==action: Start==\n\n[^1]: Note.\n");
+  await roundtripCase("named label, referenced twice", "See[^note-x] and again[^note-x].\n\n[^note-x]: Named note.\n");
+  await roundtripCase("multi-paragraph definition", "Ref[^a].\n\n[^a]: First para.\n\n    Second para.\n");
+  await roundtripCase("formatting inside a definition", "Ref[^1].\n\n[^1]: **R**ead-**E**val _loop_ and `code`.\n");
+  // Labels come from the href, not the display number, so refs used out of
+  // label order keep their labels. Definitions come back in order of first use.
+  await roundtripCase(
+    "references used out of label order keep their labels",
+    "B first[^2], then A[^1].\n\n[^1]: One.\n[^2]: Two.\n",
+    "B first[^2], then A[^1].\n\n[^2]: Two.\n\n[^1]: One.\n",
+  );
+  // A file already holding GitHub-style footnote links (from an older save) is
+  // left as it is, not half-converted.
+  await roundtripCase(
+    "literal #user-content-fn links are left alone",
+    "Old[1](#user-content-fn-1).\n\n## Footnotes\n\n1. Note. [↩](#user-content-fnref-1)\n",
+  );
+  // An ordinary ordered list after a "Footnotes" heading is not a footnote list.
+  await roundtripCase("plain list under a Footnotes heading", "## Footnotes\n\n1. One\n2. Two\n");
+  await surgicalCase(
+    "editing a paragraph with a footnote keeps [^n]",
+    "Intro.\n\nNote[^1] word.\n\n[^1]: The note.\n",
+    "Intro.\n\nNote[^1] words.\n\n[^1]: The note.\n",
+  );
+  await surgicalCase(
+    "editing a footnote definition keeps [^n]:",
+    "Note[^1] here.\n\n[^1]: The word.\n",
+    "Note[^1] here.\n\n[^1]: The words.\n",
+  );
 
   // ==========================================================================
   category("S. Auto-link rule (what the editor links while typing)");

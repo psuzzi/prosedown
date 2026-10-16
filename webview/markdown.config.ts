@@ -13,6 +13,7 @@ import rehypeRemark from "rehype-remark";
 import remarkGfm from "remark-gfm";
 import remarkStringify from "remark-stringify";
 import { DEFAULT_SETTINGS, type ProsedownSettings } from "./settings";
+import { FOOTNOTE_PREFIX } from "./conversion-utils";
 
 /**
  * Build a remark-stringify options object from user settings.
@@ -56,11 +57,98 @@ export function buildMdPipeline(settings: ProsedownSettings = DEFAULT_SETTINGS) 
     .use(rehypeParse, { fragment: true })
     .use(rehypeRemark)
     .use(remarkGfm)
+    .use(footnoteRestoreTransform)
     .use(codeInfoTransform, settings)
     .use(orderedListGuard)
     .use(listCompactTransform, settings)
     .use(imageDedupTransform, settings)
     .use(remarkStringify, buildMarkdownConfig(settings));
+}
+
+/**
+ * Turn rendered GFM footnotes back into `[^label]` references and
+ * `[^label]: …` definitions.
+ *
+ * md → html renders `x[^n]` as a link to `#<prefix>fn-n`, and the definitions
+ * as a "Footnotes" heading over an ordered list whose items end in a `↩` link
+ * to `#<prefix>fnref-n`. The editor keeps those as ordinary links, so without
+ * this transform a save wrote `[1](#user-content-fn-1)` and a numbered list.
+ * The label is read from the href, not the link text: the text is the
+ * display number (order of first use), the href holds the author's label.
+ *
+ * Only links carrying our own FOOTNOTE_PREFIX are touched, so a file that
+ * already holds literal `#user-content-fn-` links is left as it is.
+ */
+const FN_REF = new RegExp(`^#${FOOTNOTE_PREFIX}fn-(.+)$`);
+const FN_BACKREF = new RegExp(`^#${FOOTNOTE_PREFIX}fnref-(.+)$`);
+
+function footnoteRestoreTransform() {
+  return (tree: Root) => {
+    const labels = new Set<string>();
+    visit(tree, "link", (node, index, parent) => {
+      const m = FN_REF.exec(node.url);
+      if (!m || !parent || index === undefined) return;
+      const label = decodeURIComponent(m[1]);
+      labels.add(label);
+      parent.children.splice(index, 1, {
+        type: "footnoteReference",
+        identifier: label.toLowerCase(),
+        label,
+      } as any);
+    });
+
+    // A repeated reference gets a backref of `<label>-2`, `-3`, …
+    const backrefLabel = (url: string): string | null => {
+      const m = FN_BACKREF.exec(url);
+      if (!m) return null;
+      const raw = decodeURIComponent(m[1]);
+      if (labels.has(raw)) return raw;
+      const base = raw.replace(/-\d+$/, "");
+      return labels.has(base) ? base : raw;
+    };
+    const isBackref = (n: any) => n.type === "link" && backrefLabel(n.url) !== null;
+
+    const kids = tree.children as any[];
+    for (let i = 0; i < kids.length; i++) {
+      const list = kids[i];
+      if (list.type !== "list" || !list.ordered || !list.children.length) continue;
+      const defs: any[] = [];
+      for (const item of list.children) {
+        const last = item.children[item.children.length - 1];
+        const backrefs = last?.type === "paragraph" ? last.children.filter(isBackref) : [];
+        if (!backrefs.length) break;
+        const label = backrefLabel(backrefs[0].url)!;
+        last.children = last.children.filter((n: any) => !isBackref(n));
+        // Trim the spaces md → html put before each backref.
+        while (last.children.length) {
+          const tail = last.children[last.children.length - 1];
+          if (tail.type !== "text") break;
+          tail.value = tail.value.replace(/\s+$/, "");
+          if (tail.value) break;
+          last.children.pop();
+        }
+        if (!last.children.length) item.children.pop();
+        defs.push({
+          type: "footnoteDefinition",
+          identifier: label.toLowerCase(),
+          label,
+          children: item.children,
+        });
+      }
+      if (defs.length !== list.children.length) continue;
+      // Drop the "Footnotes" heading md → html put above the list.
+      const prev = kids[i - 1];
+      const start =
+        prev?.type === "heading" && toText(prev) === "Footnotes" ? i - 1 : i;
+      kids.splice(start, i - start + 1, ...defs);
+      i = start + defs.length - 1;
+    }
+  };
+}
+
+function toText(node: any): string {
+  if (typeof node.value === "string") return node.value;
+  return (node.children ?? []).map(toText).join("").trim();
 }
 
 /**
@@ -339,9 +427,13 @@ function unescapeText(text: string): string {
   text = text.replace(/([\p{L}\p{N}_])\\_([\p{L}\p{N}_])/gu, "$1_$2");
   // Remove backslash before [ when not part of a link (remark escapes all [)
   text = text.replace(/\\\[/g, "[");
-  // Remove backslash before = when followed by a non-= non-whitespace char
-  // (remark escapes = to prevent setext headings, but "=> text" is never one)
-  text = text.replace(/\\=(?=[^=\s])/g, "=");
+  // Remove backslash before =. remark escapes a leading = so the line can't
+  // read as a setext heading underline, but only a line made of nothing but
+  // = (and spaces, or blockquote >) can be one. "=> text" and
+  // "==highlight==" never are, so keep the escape only on such a line.
+  if (!/^[\s>]*=+\s*$/.test(text.replace(/\\=/g, "="))) {
+    text = text.replace(/\\=/g, "=");
+  }
   // Remove backslash before & unless what follows reads as a character
   // reference (`&copy;`, `&#169;`) — only there does a bare & change meaning.
   // remark escapes every & before a letter, which mangles query strings

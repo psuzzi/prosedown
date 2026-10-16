@@ -4,6 +4,8 @@
  * (test/pipeline.ts, regex-based).
  */
 
+import type { Options as RemarkRehypeOptions } from "remark-rehype";
+
 /** Custom remark-rehype handlers that convert remark-math AST nodes to HTML. */
 export const mathHandlers = {
   inlineMath(_state: any, node: any) {
@@ -22,6 +24,21 @@ export const mathHandlers = {
       children: [{ type: "text", value: node.value }],
     };
   },
+};
+
+/**
+ * Prefix remark-rehype puts on footnote ids and hrefs (its `clobberPrefix`).
+ * The default, `user-content-`, is what GitHub uses, so a file that already
+ * holds a literal `[1](#user-content-fn-1)` link would look like a footnote.
+ * A prefix of our own lets the save path recognise only the footnotes it
+ * rendered itself (see `footnoteRestoreTransform` in markdown.config.ts).
+ */
+export const FOOTNOTE_PREFIX = "prosedown-";
+
+/** Options for every md → html remark-rehype step (production and tests). */
+export const remarkRehypeOptions: RemarkRehypeOptions = {
+  handlers: mathHandlers as RemarkRehypeOptions["handlers"],
+  clobberPrefix: FOOTNOTE_PREFIX,
 };
 
 // Placeholder for | inside code spans in table rows.

@@ -9,6 +9,7 @@ import { buildMdPipeline, normalizeMarkdown } from "../markdown.config";
 import { DEFAULT_SETTINGS, type ProsedownSettings } from "../settings";
 import {
   mathHandlers,
+  remarkRehypeOptions,
   PIPE_PH,
   DOLLAR_PH,
   protectCurrencyDollars,
@@ -33,7 +34,7 @@ export async function markdownToDisplayHtml(
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkMath)
-    .use(remarkRehype, { handlers: mathHandlers })
+    .use(remarkRehype, remarkRehypeOptions)
     .use(rehypeStringify)
     .process(md);
   let html = String(result).replace(new RegExp(PIPE_PH, "g"), "|");
@@ -68,7 +69,7 @@ export async function markdownToHtml(
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkMath)
-    .use(remarkRehype, { handlers: mathHandlers })
+    .use(remarkRehype, remarkRehypeOptions)
     .use(rehypeStringify)
     .process(md);
 
